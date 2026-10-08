@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { CampoSegmento } from '../components/Segmento'
 import { AreaDeTexto, Aviso, Botao, BotaoLink, Campo, Cartao, Carregando, Contador, Etiqueta, Rotulo, Selecao, Titulo, Vazio } from '../components/ui'
 import { useAmostras, useProdutos, useProspectos, useRegistrarAmostra, useRepresentantes, useSalvarProspecto, useSaldosRepresentante } from '../lib/api'
 import { useAcesso } from '../lib/auth'
@@ -292,7 +293,7 @@ export function PotencialForm() {
     <form onSubmit={enviar} className="space-y-4">
       <Titulo apoio="Cadastro rápido. O endereço completo fica para quando virar loja.">{id ? 'Editar potencial cliente' : 'Novo potencial cliente'}</Titulo>
       <Campo rotulo="Nome do lugar" required {...campo('nome')} />
-      <Campo rotulo="Segmento" {...campo('segmento')} />
+      <CampoSegmento valor={form.segmento} aoMudar={(segmento) => setForm((f) => ({ ...f, segmento }))} />
       <Campo rotulo="Rua e número" {...campo('endereco')} />
       <div className="grid grid-cols-2 gap-3">
         <Campo rotulo="Bairro" {...campo('bairro')} />

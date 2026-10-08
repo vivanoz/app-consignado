@@ -50,6 +50,21 @@ export async function buscarPorCep(cep: string, sinal?: AbortSignal): Promise<En
 
 // Ruas da cidade que contêm o termo (mínimo de 3 letras, regra do ViaCEP).
 export async function buscarPorRua(uf: string, cidade: string, termo: string, sinal?: AbortSignal): Promise<Endereco[]> {
-  const r = await consultar<RespostaViaCep[]>([uf, cidade, termo].map((p) => encodeURIComponent(p.trim())).join('/'), sinal)
-  return Array.isArray(r) ? r.filter((x) => x.logradouro).map(ler) : []
+  const buscar = async (texto: string) => {
+    const r = await consultar<RespostaViaCep[]>([uf, cidade, texto].map((p) => encodeURIComponent(p.trim())).join('/'), sinal)
+    return Array.isArray(r) ? r.filter((x) => x.logradouro).map(ler) : []
+  }
+  // O ViaCEP procura o texto exato dentro do nome oficial. Quem digita "Av.
+  // Bento Munhoz da Rocha Neto" não acha "Avenida Bento Munhoz da Rocha
+  // Netto", então a busca tira o tipo da via e, sem resultado, tenta só com
+  // as primeiras palavras.
+  const palavras = termo
+    .trim()
+    .replace(/^(av|avenida|r|rua|pç|pc|praça|praca|trav|travessa|al|alameda|rod|rodovia|estr|estrada)\.?\s+/i, '')
+    .split(/\s+/)
+    .filter(Boolean)
+  if (palavras.join(' ').length < 3) return []
+  const completos = await buscar(palavras.join(' '))
+  if (completos.length > 0 || palavras.length <= 2) return completos
+  return buscar(palavras.slice(0, 2).join(' '))
 }

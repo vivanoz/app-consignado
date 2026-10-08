@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AreaDeTexto, Aviso, Botao, Campo, Carregando, Selecao, Titulo } from '../components/ui'
 import { useLoja, useProspectos, useRepresentantes, useSalvarLoja, useSalvarProspecto } from '../lib/api'
+import { CampoSegmento } from '../components/Segmento'
 import { useAcesso } from '../lib/auth'
 import { buscarPorCep, buscarPorRua, formatarCep, type Endereco } from '../lib/cep'
 import { MODALIDADES_DE_LOJA, NOME_MODALIDADE } from '../lib/formato'
@@ -70,7 +71,8 @@ export function LojaForm() {
   const [recadoCep, setRecadoCep] = useState('')
   const busca = useRef<{ cancelar?: AbortController; espera?: number }>({})
 
-  const aplicar = (e: Endereco) => {
+  const aplicar = (e: Endereco, porRua = false) => {
+    if (porRua) setRecadoCep(`CEP ajustado para ${formatarCep(e.cep)}, o desta rua.`)
     setForm((f) => ({ ...f, cep: formatarCep(e.cep), endereco: e.endereco || f.endereco, bairro: e.bairro || f.bairro, cidade: e.cidade, uf: e.uf }))
     setSugestoes([])
   }
@@ -91,7 +93,11 @@ export function LojaForm() {
     try {
       const achado = await buscarPorCep(cep, controle.signal)
       if (achado) aplicar(achado)
-      setRecadoCep(achado ? 'Endereço preenchido. Confira e informe o número.' : 'CEP não encontrado. Preencha o endereço à mão.')
+      setRecadoCep(
+        achado
+          ? `Pelos Correios, este CEP é ${achado.endereco || 'um CEP geral da cidade'}. Se a loja fica em outra rua, digite o nome dela abaixo e escolha na lista: o CEP é corrigido junto.`
+          : 'CEP não encontrado. Preencha o endereço à mão.',
+      )
     } catch (erro) {
       if (!controle.signal.aborted) setRecadoCep('Não deu para buscar o CEP agora. Preencha o endereço à mão.')
     }
@@ -165,7 +171,7 @@ export function LojaForm() {
     <form onSubmit={enviar} className="space-y-4">
       <Titulo>{id ? 'Editar loja' : 'Nova loja'}</Titulo>
       <Campo rotulo="Nome da loja" required {...campo('nome')} />
-      <Campo rotulo="Segmento" {...campo('segmento')} />
+      <CampoSegmento valor={form.segmento} aoMudar={(segmento) => setForm((f) => ({ ...f, segmento }))} />
       <div className="grid grid-cols-2 gap-3">
         <Campo rotulo="CEP" inputMode="numeric" autoComplete="postal-code" placeholder="87000-000" value={form.cep} onChange={(e) => mudarCep(e.target.value)} />
         <Campo rotulo="Número" inputMode="numeric" {...campo('numero')} />
@@ -178,7 +184,7 @@ export function LojaForm() {
           <ul className="mt-1 divide-y divide-linha overflow-hidden rounded-xl border border-marrom/25 bg-papel">
             {sugestoes.map((s) => (
               <li key={s.cep}>
-                <button type="button" onClick={() => aplicar(s)} className="block w-full px-3 py-2.5 text-left active:bg-areia/40">
+                <button type="button" onClick={() => aplicar(s, true)} className="block w-full px-3 py-2.5 text-left active:bg-areia/40">
                   <span className="block text-sm font-semibold">{s.endereco}</span>
                   <span className="block text-xs text-marrom/65">{[s.trecho, s.bairro, formatarCep(s.cep)].filter(Boolean).join(' · ')}</span>
                 </button>
