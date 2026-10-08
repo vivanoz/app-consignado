@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AreaDeTexto, Aviso, Botao, BotaoLink, Cartao, Carregando, Contador, Rotulo, Titulo, Vazio } from '../components/ui'
-import { useAnexar, useLoja, usePrecos, useProdutos, useRegistrarVisita, useRepresentantes, useSaldosLoja, useSaldosRepresentante } from '../lib/api'
+import { useAnexar, useLoja, usePrecos, useProdutos, useProdutosFora, useRegistrarVisita, useRepresentantes, useSaldosLoja, useSaldosRepresentante } from '../lib/api'
 import { useAcesso } from '../lib/auth'
 import { hoje, linkWhatsApp, pacotes, precoVigente, reais, data } from '../lib/formato'
 import { enviarArquivo } from '../lib/arquivos'
@@ -36,6 +36,7 @@ export function NovaVisita() {
   const precos = usePrecos()
   const saldosLoja = useSaldosLoja()
   const saldosRep = useSaldosRepresentante()
+  const fora = useProdutosFora()
   const representantes = useRepresentantes()
   const { papel, meuRepresentanteId } = useAcesso()
   const registrar = useRegistrarVisita()
@@ -73,8 +74,9 @@ export function NovaVisita() {
         const preco = precoVigente(precos.data ?? [], p.id, l.modalidade)?.preco_loja
         return { produto: p, naLoja, comigo, ...v, encontrado, vendido, fica, preco }
       })
-      .filter((x) => x.produto.ativo || x.naLoja > 0)
-  }, [l, produtos.data, saldosLoja.data, saldosRep.data, precos.data, rascunho.linhas, direta])
+      // Fora de linha ou que a loja não compra: só aparece se ainda houver pacote lá para contar.
+      .filter((x) => (x.produto.ativo && !fora.data?.some((f) => f.loja_id === l.id && f.produto_id === x.produto.id)) || x.naLoja > 0)
+  }, [l, produtos.data, saldosLoja.data, saldosRep.data, precos.data, rascunho.linhas, direta, fora.data])
 
   if (loja.isPending || produtos.isPending || saldosLoja.isPending || saldosRep.isPending) return <Carregando />
   if (!l) return <Vazio>Loja não encontrada.</Vazio>

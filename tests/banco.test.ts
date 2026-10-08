@@ -645,3 +645,21 @@ describe('matérias-primas', () => {
     await expect(b.como(ana, `insert into public.produtos (sku, nome, nome_curto) values ('X', 'X', 'X')`)).rejects.toThrow(/row-level security/)
   })
 })
+
+describe('produtos que a loja trabalha', () => {
+  it('representante marca o sabor que a sua loja não compra; não mexe na loja alheia', async () => {
+    await b.como(ana, `insert into public.loja_produtos_fora (loja_id, produto_id) values ($1, $2)`, [lojaAna, prod['MIX-100']])
+    await expect(b.como(ana, `insert into public.loja_produtos_fora (loja_id, produto_id) values ($1, $2)`, [lojaBia, prod['MIX-100']])).rejects.toThrow(/row-level security/)
+    expect(await b.como(ana, `select 1 from public.loja_produtos_fora`)).toHaveLength(1)
+    expect(await b.como(bia, `select 1 from public.loja_produtos_fora`)).toHaveLength(0)
+    expect(await b.como(producao, `select 1 from public.loja_produtos_fora`)).toHaveLength(0)
+    expect(await b.como(gestao, `select 1 from public.loja_produtos_fora`)).toHaveLength(1)
+  })
+
+  it('voltar a trabalhar com o sabor é só desmarcar', async () => {
+    await b.como(bia, `delete from public.loja_produtos_fora where loja_id = $1`, [lojaAna])
+    expect(await b.admin(`select 1 from public.loja_produtos_fora`)).toHaveLength(1)
+    await b.como(ana, `delete from public.loja_produtos_fora where loja_id = $1`, [lojaAna])
+    expect(await b.admin(`select 1 from public.loja_produtos_fora`)).toHaveLength(0)
+  })
+})

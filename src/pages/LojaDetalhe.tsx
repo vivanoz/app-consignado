@@ -1,7 +1,7 @@
 import { useParams } from 'react-router-dom'
 import { EnviarArquivo, Foto } from '../components/arquivos'
 import { Aviso, Botao, BotaoLink, Cartao, Carregando, Etiqueta, Rotulo, SaldoPorProduto, Titulo, Vazio } from '../components/ui'
-import { useAcertos, useEstornarVisita, useLoja, useSalvarLoja, useProdutos, useRepresentantes, useSaldosLoja, useVisitas } from '../lib/api'
+import { useAcertos, useAlternarProdutoDaLoja, useEstornarVisita, useLoja, useProdutosFora, useSalvarLoja, useProdutos, useRepresentantes, useSaldosLoja, useVisitas } from '../lib/api'
 import { useAcesso } from '../lib/auth'
 import { NOME_MODALIDADE, data, dataHora, reais } from '../lib/formato'
 
@@ -16,6 +16,8 @@ export function LojaDetalhe() {
   const representantes = useRepresentantes()
   const estornar = useEstornarVisita()
   const salvarLoja = useSalvarLoja()
+  const fora = useProdutosFora()
+  const alternar = useAlternarProdutoDaLoja()
 
   if (loja.isPending || produtos.isPending) return <Carregando />
   if (loja.error) return <Aviso erro={loja.error} />
@@ -23,10 +25,15 @@ export function LojaDetalhe() {
 
   const l = loja.data
   const nome = (produtoId: string) => produtos.data?.find((p) => p.id === produtoId)?.nome_curto ?? '?'
-  const saldo = (produtos.data ?? []).map((p) => ({
-    nome: p.nome_curto,
-    quantidade: (saldos.data ?? []).find((s) => s.loja_id === l.id && s.produto_id === p.id)?.saldo ?? 0,
-  }))
+  const trabalha = (produtoId: string) => !fora.data?.some((f) => f.loja_id === l.id && f.produto_id === produtoId)
+  const saldo = (produtos.data ?? [])
+    .map((p) => ({
+      nome: p.nome_curto,
+      trabalha: trabalha(p.id),
+      quantidade: (saldos.data ?? []).find((s) => s.loja_id === l.id && s.produto_id === p.id)?.saldo ?? 0,
+    }))
+    // Sabor que a loja não compra só aparece se ainda tiver pacote lá.
+    .filter((s) => s.trabalha || s.quantidade > 0)
   const acertosDaLoja = (acertos.data ?? []).filter((a) => a.loja_id === l.id)
   const pendente = acertosDaLoja.filter((a) => a.status === 'pendente').reduce((soma, a) => soma + Number(a.valor_total), 0)
   const podeVisitar = l.status === 'ativa' && (ehGestao || l.representante_id === meuRepresentanteId)
@@ -60,6 +67,31 @@ export function LojaDetalhe() {
           <div className="mt-3">
             <SaldoPorProduto itens={saldo} />
           </div>
+        </Cartao>
+      )}
+
+      {(ehGestao || l.representante_id === meuRepresentanteId) && (
+        <Cartao>
+          <Rotulo>Sabores que esta loja compra</Rotulo>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {(produtos.data ?? []).filter((p) => p.ativo).map((p) => {
+              const marcado = trabalha(p.id)
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-pressed={marcado}
+                  disabled={alternar.isPending}
+                  onClick={() => alternar.mutate({ lojaId: l.id, produtoId: p.id, trabalha: !marcado })}
+                  className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${marcado ? 'border-verde bg-verde text-creme' : 'border-marrom/30 text-marrom/55 line-through'}`}
+                >
+                  {p.nome_curto}
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-2 text-xs text-marrom/65">Toque para marcar ou desmarcar. Sabor desmarcado não entra no aviso de reposição nem na tela de visita.</p>
+          <Aviso erro={alternar.error} />
         </Cartao>
       )}
 

@@ -505,3 +505,20 @@ export const useRegistrarCompra = () =>
       p_observacoes: c.observacoes || null,
     }),
   )
+
+// ── Produtos que cada loja trabalha ──
+// A tabela guarda só as exceções: o que a loja NÃO compra.
+
+export const useProdutosFora = (ativo = true) =>
+  useQuery({
+    queryKey: ['loja-produtos-fora'],
+    enabled: ativo,
+    queryFn: () => ler<{ loja_id: string; produto_id: string }[]>(supabase.from('loja_produtos_fora').select('loja_id, produto_id')),
+  })
+
+export const useAlternarProdutoDaLoja = () =>
+  useEscrita((p: { lojaId: string; produtoId: string; trabalha: boolean }) =>
+    p.trabalha
+      ? ler(supabase.from('loja_produtos_fora').delete().eq('loja_id', p.lojaId).eq('produto_id', p.produtoId))
+      : ler(supabase.from('loja_produtos_fora').upsert({ loja_id: p.lojaId, produto_id: p.produtoId }, { ignoreDuplicates: true })),
+  )
