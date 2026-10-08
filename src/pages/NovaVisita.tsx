@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AreaDeTexto, Aviso, Botao, BotaoLink, Cartao, Carregando, Contador, Rotulo, Titulo, Vazio } from '../components/ui'
-import { useAnexar, useLoja, usePrecos, useProdutos, useRegistrarVisita, useSaldosLoja, useSaldosRepresentante } from '../lib/api'
+import { useAnexar, useLoja, usePrecos, useProdutos, useRegistrarVisita, useRepresentantes, useSaldosLoja, useSaldosRepresentante } from '../lib/api'
+import { useAcesso } from '../lib/auth'
 import { hoje, linkWhatsApp, pacotes, precoVigente, reais, data } from '../lib/formato'
 import { enviarArquivo } from '../lib/arquivos'
 import type { ItemVisitaEnvio, ResultadoVisita } from '../lib/tipos'
@@ -35,6 +36,8 @@ export function NovaVisita() {
   const precos = usePrecos()
   const saldosLoja = useSaldosLoja()
   const saldosRep = useSaldosRepresentante()
+  const representantes = useRepresentantes()
+  const { papel, meuRepresentanteId } = useAcesso()
   const registrar = useRegistrarVisita()
   const anexar = useAnexar()
   const [foto, setFoto] = useState<File | null>(null)
@@ -84,6 +87,14 @@ export function NovaVisita() {
   const semPreco = linhas.filter((x) => x.vendido > 0 && x.preco === undefined)
   const valor = linhas.reduce((s, x) => s + x.vendido * (x.preco ?? 0), 0)
   const faltaEstoque = linhas.filter((x) => x.reposto > x.comigo + x.recolhido)
+
+  // O estoque que vale é o de quem cuida da loja, que pode não ser quem está
+  // com o app aberto (a gestão registra visita por qualquer representante).
+  const minhaLoja = l.representante_id === meuRepresentanteId
+  const dono = minhaLoja ? 'Você' : (representantes.data?.find((r) => r.id === l.representante_id)?.nome ?? 'O representante')
+  const semEstoque = linhas.every((x) => x.comigo === 0)
+  const semPrecoAlgum = precos.data !== undefined && linhas.some((x) => x.produto.ativo && x.preco === undefined)
+  const lanca = papel === 'gestao' || papel === 'producao'
 
   async function enviar() {
     const itens: ItemVisitaEnvio[] = linhas.map((x) => ({
@@ -213,6 +224,38 @@ export function NovaVisita() {
         {l.nome}
       </Titulo>
 
+      {semEstoque && (
+        <Cartao className="border-alerta/40 bg-alerta/8">
+          <p className="font-semibold">{dono} está sem estoque no app.</p>
+          <p className="mt-1 text-sm text-marrom/80">
+            Só dá para repor o que foi retirado na fábrica. {lanca ? 'Registre a retirada primeiro e volte aqui.' : 'Peça à gestão ou à produção para registrar a sua retirada.'}
+          </p>
+          {lanca && (
+            <div className="mt-3">
+              <BotaoLink para="/estoque" cheio>
+                Registrar retirada
+              </BotaoLink>
+            </div>
+          )}
+        </Cartao>
+      )}
+
+      {semPrecoAlgum && (
+        <Cartao className="border-alerta/40 bg-alerta/8">
+          <p className="font-semibold">Falta cadastrar preço.</p>
+          <p className="mt-1 text-sm text-marrom/80">
+            Sem o preço de loja, o app não calcula o acerto quando houver venda. {papel === 'gestao' ? 'Lance os preços dos sabores.' : 'Avise a gestão.'}
+          </p>
+          {papel === 'gestao' && (
+            <div className="mt-3">
+              <BotaoLink para="/mais/precos" variante="secundario" cheio>
+                Abrir tabela de preços
+              </BotaoLink>
+            </div>
+          )}
+        </Cartao>
+      )}
+
       {linhas.map((x) => {
         const atual: Linha = { encontrado: x.encontrado, recolhido: x.recolhido, baixado: x.baixado, reposto: x.reposto }
         const aberto = x.recolhido > 0 || x.baixado > 0
@@ -259,7 +302,7 @@ export function NovaVisita() {
             {x.produto.ativo && (
               <Contador
                 rotulo={direta ? 'Entreguei' : 'Repus'}
-                apoio={`você tem ${x.comigo + x.recolhido}`}
+                apoio={x.comigo + x.recolhido === 0 ? `${dono.toLowerCase() === 'você' ? 'você está' : dono + ' está'} sem estoque deste sabor` : `${minhaLoja ? 'você tem' : dono + ' tem'} ${x.comigo + x.recolhido}`}
                 valor={x.reposto}
                 maximo={x.comigo + x.recolhido}
                 aoMudar={(n) => mudar(x.produto.id, atual, 'reposto', n)}
