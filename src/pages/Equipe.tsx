@@ -102,6 +102,7 @@ function NovoUsuario({ aoFechar, representante }: { aoFechar: () => void; repres
     fazVisitas: false,
     consignado: '15',
     direta: '12',
+    varejo: '15',
     bonus: '30',
   })
   const [criado, setCriado] = useState<{ nome: string; email: string; senha: string } | null>(null)
@@ -124,6 +125,7 @@ function NovoUsuario({ aoFechar, representante }: { aoFechar: () => void; repres
       representante_id: representante?.id,
       comissao_consignado: numero(form.consignado) / 100,
       comissao_direta: numero(form.direta) / 100,
+      comissao_varejo: numero(form.varejo) / 100,
       bonus_abertura: numero(form.bonus),
     })
     setCriado({ nome: form.nome.trim(), email: form.email.trim(), senha: form.senha })
@@ -175,9 +177,10 @@ function NovoUsuario({ aoFechar, representante }: { aoFechar: () => void; repres
         {visita && !representante && (
           <div className="rounded-xl bg-creme p-3">
             <p className="text-sm font-semibold">Comissão</p>
-            <div className="mt-2 grid grid-cols-3 gap-2">
+            <div className="mt-2 grid grid-cols-2 gap-2">
               <Campo rotulo="Consignado %" inputMode="decimal" {...campo('consignado')} />
               <Campo rotulo="Direta %" inputMode="decimal" {...campo('direta')} />
+              <Campo rotulo="Varejo %" inputMode="decimal" {...campo('varejo')} />
               <Campo rotulo="Bônus R$" inputMode="decimal" {...campo('bonus')} />
             </div>
             <p className="mt-2 text-xs text-marrom/65">Para quem é da casa e não recebe comissão, deixe tudo em zero.</p>
@@ -210,12 +213,13 @@ function Pessoa({ perfil, representante, condicao, souEu }: { perfil: Perfil; re
   const anexar = useAnexar()
   const verApp = useVerApp()
   const [editando, setEditando] = useState(false)
-  const [taxa, setTaxa] = useState({ consignado: '', direta: '', bonus: '' })
+  const [taxa, setTaxa] = useState({ consignado: '', direta: '', varejo: '', bonus: '' })
 
   function abrirComissao() {
     setTaxa({
       consignado: String(Number(condicao?.comissao_consignado ?? 0.15) * 100),
       direta: String(Number(condicao?.comissao_direta ?? 0.12) * 100),
+      varejo: String(Number(condicao?.comissao_varejo ?? 0.15) * 100),
       bonus: String(Number(condicao?.bonus_abertura ?? 30)),
     })
     setEditando(true)
@@ -227,6 +231,7 @@ function Pessoa({ perfil, representante, condicao, souEu }: { perfil: Perfil; re
       representante_id: representante!.id,
       comissao_consignado: numero(taxa.consignado) / 100,
       comissao_direta: numero(taxa.direta) / 100,
+      comissao_varejo: numero(taxa.varejo) / 100,
       bonus_abertura: numero(taxa.bonus),
       vigente_desde: hoje(),
     })
@@ -271,14 +276,15 @@ function Pessoa({ perfil, representante, condicao, souEu }: { perfil: Perfil; re
             <p className="text-sm">
               <span className="font-semibold">{representante.ativo ? 'Faz visitas.' : 'Visitas desativadas.'}</span>{' '}
               {condicao
-                ? `${porcento(condicao.comissao_consignado)} consignado · ${porcento(condicao.comissao_direta)} direta · bônus ${reais(condicao.bonus_abertura)}`
+                ? `${porcento(condicao.comissao_consignado)} consignado · ${porcento(condicao.comissao_direta)} direta · ${porcento(condicao.comissao_varejo)} varejo · bônus ${reais(condicao.bonus_abertura)}`
                 : 'Sem comissão definida.'}
             </p>
           </div>
           {editando ? (
             <form onSubmit={gravarComissao} className="space-y-2 rounded-xl bg-creme p-3">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <Campo rotulo="Consignado %" inputMode="decimal" value={taxa.consignado} onChange={(e) => setTaxa({ ...taxa, consignado: e.target.value })} />
+                <Campo rotulo="Varejo %" inputMode="decimal" value={taxa.varejo} onChange={(e) => setTaxa({ ...taxa, varejo: e.target.value })} />
                 <Campo rotulo="Direta %" inputMode="decimal" value={taxa.direta} onChange={(e) => setTaxa({ ...taxa, direta: e.target.value })} />
                 <Campo rotulo="Bônus R$" inputMode="decimal" value={taxa.bonus} onChange={(e) => setTaxa({ ...taxa, bonus: e.target.value })} />
               </div>
@@ -325,7 +331,7 @@ function Pessoa({ perfil, representante, condicao, souEu }: { perfil: Perfil; re
                   perfil_id: perfil.id,
                   territorio: 'Maringá',
                   // Quem é da gestão começa sem comissão; dá para alterar depois.
-                  condicao: perfil.papel === 'gestao' ? { comissao_consignado: 0, comissao_direta: 0, bonus_abertura: 0 } : undefined,
+                  condicao: perfil.papel === 'gestao' ? { comissao_consignado: 0, comissao_direta: 0, comissao_varejo: 0, bonus_abertura: 0 } : undefined,
                 })
               }
             >

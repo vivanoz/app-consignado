@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AreaDeTexto, Aviso, Botao, Campo, Carregando, Selecao, Titulo } from '../components/ui'
-import { useLoja, useRepresentantes, useSalvarLoja } from '../lib/api'
+import { useLoja, useProspectos, useRepresentantes, useSalvarLoja, useSalvarProspecto } from '../lib/api'
 import { useAcesso } from '../lib/auth'
 import { buscarPorCep, buscarPorRua, formatarCep, type Endereco } from '../lib/cep'
-import { NOME_MODALIDADE } from '../lib/formato'
+import { MODALIDADES_DE_LOJA, NOME_MODALIDADE } from '../lib/formato'
 import type { Loja, LojaStatus, Modalidade } from '../lib/tipos'
 
 const VAZIA = {
@@ -32,6 +32,13 @@ export function LojaForm() {
   const existente = useLoja(id)
   const representantes = useRepresentantes()
   const salvar = useSalvarLoja()
+  // Loja que nasce de um potencial cliente: o cadastro vem preenchido e, ao
+  // salvar, o potencial fica marcado como "virou loja".
+  const [parametros] = useSearchParams()
+  const potencialId = id ? null : parametros.get('potencial')
+  const prospectos = useProspectos(Boolean(potencialId))
+  const salvarProspecto = useSalvarProspecto()
+  const potencial = prospectos.data?.find((p) => p.id === potencialId)
   const [form, setForm] = useState(VAZIA)
 
   useEffect(() => {
@@ -103,6 +110,22 @@ export function LojaForm() {
     }, 450)
   }
 
+  useEffect(() => {
+    if (!potencial) return
+    setForm((f) => ({
+      ...f,
+      nome: potencial.nome,
+      segmento: potencial.segmento ?? f.segmento,
+      endereco: potencial.endereco ?? '',
+      bairro: potencial.bairro ?? '',
+      cidade: potencial.cidade,
+      contato_nome: potencial.contato_nome ?? '',
+      contato_telefone: potencial.contato_telefone ?? '',
+      observacoes: potencial.observacoes ?? '',
+      representante_id: potencial.representante_id,
+    }))
+  }, [potencial])
+
   if (id && existente.isPending) return <Carregando />
 
   const campo = (nome: keyof typeof VAZIA) => ({
@@ -129,11 +152,12 @@ export function LojaForm() {
     }
     // Representante, modalidade e status só a gestão muda depois de criada.
     if (!id || ehGestao) {
-      dados.representante_id = ehGestao ? form.representante_id : meuRepresentanteId!
+      dados.representante_id = ehGestao ? form.representante_id : (potencial?.representante_id ?? meuRepresentanteId!)
       dados.modalidade = form.modalidade
     }
     if (id && ehGestao) dados.status = form.status
     const loja = await salvar.mutateAsync(id ? { id, ...dados } : dados)
+    if (potencial) await salvarProspecto.mutateAsync({ id: potencial.id, status: 'virou_loja', loja_id: loja.id }).catch(() => {})
     navegar(`/lojas/${loja.id}`, { replace: true })
   }
 
@@ -186,7 +210,7 @@ export function LojaForm() {
 
       {(!id || ehGestao) && (
         <Selecao rotulo="Modalidade" {...campo('modalidade')}>
-          {(Object.keys(NOME_MODALIDADE) as Modalidade[]).map((m) => (
+          {MODALIDADES_DE_LOJA.map((m) => (
             <option key={m} value={m}>
               {NOME_MODALIDADE[m]}
             </option>

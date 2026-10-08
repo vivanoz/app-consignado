@@ -13,6 +13,8 @@ import { Lojas } from './pages/Lojas'
 import { Equipe } from './pages/Equipe'
 import { Mais, Precos } from './pages/Mais'
 import { NovaVisita } from './pages/NovaVisita'
+import { PotencialDetalhe, PotencialForm, Potenciais } from './pages/Potenciais'
+import { VendaVarejo } from './pages/VendaVarejo'
 
 export function App() {
   const { carregando, sessao, papel, ehGestao, precisaDefinirSenha } = useAcesso()
@@ -39,6 +41,11 @@ export function App() {
             <Route path="lojas/:id/editar" element={<LojaForm />} />
             <Route path="lojas/:id/visita" element={<NovaVisita />} />
             <Route path="financeiro" element={<Financeiro />} />
+            <Route path="varejo" element={<VendaVarejo />} />
+            <Route path="potenciais" element={<Potenciais />} />
+            <Route path="potenciais/novo" element={<PotencialForm />} />
+            <Route path="potenciais/:id" element={<PotencialDetalhe />} />
+            <Route path="potenciais/:id/editar" element={<PotencialForm />} />
           </>
         )}
         {ehGestao && (

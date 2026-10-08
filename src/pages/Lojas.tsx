@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { CartaoLoja } from '../components/CartaoLoja'
 import { Aviso, BotaoLink, Carregando, Titulo, Vazio } from '../components/ui'
 import { useRepresentantes } from '../lib/api'
@@ -39,6 +40,13 @@ export function Lojas() {
   return (
     <div className="space-y-4">
       <Titulo apoio="As que precisam de reposição aparecem primeiro.">Lojas</Titulo>
+
+      <div className="flex rounded-xl border border-linha bg-papel p-1">
+        <span className="grid min-h-10 flex-1 place-items-center rounded-lg bg-verde text-sm font-semibold text-creme">Lojas</span>
+        <Link to="/potenciais" className="grid min-h-10 flex-1 place-items-center rounded-lg text-sm font-semibold text-marrom/70">
+          Potenciais
+        </Link>
+      </div>
 
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-linha bg-papel p-1">
         {filtros.map((f) => (

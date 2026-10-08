@@ -6,6 +6,7 @@ import { useAcesso } from './auth'
 import { supabase } from './supabase'
 import type {
   Acerto,
+  Amostra,
   Comissao,
   Condicao,
   ItemVisitaEnvio,
@@ -14,6 +15,7 @@ import type {
   Perfil,
   Preco,
   Produto,
+  Prospecto,
   Repasse,
   Representante,
   ResultadoVisita,
@@ -306,6 +308,7 @@ export interface NovoUsuario {
   representante_id?: string
   comissao_consignado: number
   comissao_direta: number
+  comissao_varejo: number
   bonus_abertura: number
 }
 
@@ -320,3 +323,103 @@ export const useCriarUsuario = () =>
     if (data?.erro) throw new Error(data.erro)
     return data as { id: string; representante_id: string | null }
   })
+
+// ── Produção e estoque da fábrica ──
+
+export const useSaldosFabrica = (ativo = true) =>
+  useQuery({
+    queryKey: ['saldos-fabrica'],
+    enabled: ativo,
+    queryFn: () => ler<{ produto_id: string; saldo: number }[]>(supabase.from('saldos_fabrica').select('*')),
+  })
+
+export const useRegistrarProducao = () =>
+  useEscrita(
+    async (p: {
+      // Um identificador por sabor: reenviar não duplica o lote.
+      itens: { operacaoId: string; produtoId: string; quantidade: number }[]
+      produzidoEm: string
+      validade: string | null
+      // Quem produz e já sai para vender leva o lote direto para o próprio estoque.
+      retirar: { operacaoId: string; representanteId: string } | null
+    }) => {
+      for (const item of p.itens) {
+        await chamar('registrar_producao', {
+          p_operacao_id: item.operacaoId,
+          p_produto_id: item.produtoId,
+          p_quantidade: item.quantidade,
+          p_produzido_em: p.produzidoEm,
+          p_validade: p.validade,
+        })
+      }
+      if (p.retirar) {
+        await chamar('registrar_retirada', {
+          p_operacao_id: p.retirar.operacaoId,
+          p_representante_id: p.retirar.representanteId,
+          p_itens: p.itens.map((i) => ({ produto_id: i.produtoId, quantidade: i.quantidade })),
+          p_observacao: 'Direto da produção',
+        })
+      }
+    },
+  )
+
+// ── Venda varejo ──
+
+export const useRegistrarVendaVarejo = () =>
+  useEscrita((v: { id: string; representanteId: string; itens: { produto_id: string; quantidade: number }[]; vendidaEm: string; observacoes: string }) =>
+    chamar<{ venda_id: string; acerto_id: string; valor_total: number }>('registrar_venda_varejo', {
+      p_id: v.id,
+      p_representante_id: v.representanteId,
+      p_itens: v.itens,
+      p_vendida_em: v.vendidaEm,
+      p_observacoes: v.observacoes || null,
+    }),
+  )
+
+export const useEstornarVendaVarejo = () =>
+  useEscrita((e: { vendaId: string; motivo: string }) => chamar('estornar_venda_varejo', { p_venda_id: e.vendaId, p_motivo: e.motivo }))
+
+// ── Potenciais clientes e amostras ──
+
+export const useProspectos = (ativo = true) => {
+  const escopo = useEscopo()
+  return useQuery({
+    queryKey: ['prospectos', escopo],
+    enabled: ativo,
+    queryFn: () => {
+      const consulta = supabase.from('prospectos').select('*')
+      return ler<Prospecto[]>((escopo ? consulta.eq('representante_id', escopo) : consulta).order('criado_em', { ascending: false }))
+    },
+  })
+}
+
+export const useAmostras = (ativo = true) => {
+  const escopo = useEscopo()
+  return useQuery({
+    queryKey: ['amostras', escopo],
+    enabled: ativo,
+    queryFn: () => {
+      const consulta = supabase.from('amostras').select('*, amostra_itens(produto_id, quantidade)')
+      return ler<Amostra[]>((escopo ? consulta.eq('representante_id', escopo) : consulta).order('entregue_em', { ascending: false }).limit(500))
+    },
+  })
+}
+
+export const useSalvarProspecto = () =>
+  useEscrita(async (p: Partial<Prospecto>) => {
+    const { id, ...campos } = p
+    return id
+      ? ler<Prospecto>(supabase.from('prospectos').update(campos).eq('id', id).select().single())
+      : ler<Prospecto>(supabase.from('prospectos').insert(campos).select().single())
+  })
+
+export const useRegistrarAmostra = () =>
+  useEscrita((a: { id: string; prospectoId: string; itens: { produto_id: string; quantidade: number }[]; entregueEm: string; observacoes: string }) =>
+    chamar<{ amostra_id: string; pacotes: number }>('registrar_amostra', {
+      p_id: a.id,
+      p_prospecto_id: a.prospectoId,
+      p_itens: a.itens,
+      p_entregue_em: a.entregueEm,
+      p_observacoes: a.observacoes || null,
+    }),
+  )

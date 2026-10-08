@@ -95,6 +95,7 @@ Deno.serve(async (req) => {
       representante_id: rep.id,
       comissao_consignado: fracao(dados.comissao_consignado, 0.15),
       comissao_direta: fracao(dados.comissao_direta, 0.12),
+      comissao_varejo: fracao(dados.comissao_varejo, 0.15),
       bonus_abertura: Math.max(0, Number(dados.bonus_abertura ?? 30) || 0),
       criado_por: quem.user.id,
     })

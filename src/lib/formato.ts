@@ -31,7 +31,10 @@ export const NOME_MODALIDADE: Record<Modalidade, string> = {
   kit_teste: 'Kit Teste',
   consignado: 'Consignado',
   compra_direta: 'Compra direta',
+  varejo: 'Venda varejo',
 }
+
+export const MODALIDADES_DE_LOJA = ['kit_teste', 'consignado', 'compra_direta'] as const
 
 export const NOME_PAPEL: Record<Papel, string> = {
   gestao: 'Gestão',
@@ -47,6 +50,8 @@ export const NOME_MOVIMENTO: Record<string, string> = {
   recolhimento: 'Recolhido da loja',
   venda: 'Venda na loja',
   venda_direta: 'Compra direta',
+  venda_varejo: 'Venda varejo',
+  amostra: 'Amostra',
   baixa: 'Baixa',
   ajuste: 'Ajuste de contagem',
   estorno: 'Estorno',
@@ -82,3 +87,13 @@ export const haQuanto = (iso: string | undefined) => {
 }
 
 export const porcento = (fracao: number) => `${(Number(fracao) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
+
+export const NOME_PROSPECTO: Record<string, string> = {
+  novo: 'Novo',
+  em_conversa: 'Em conversa',
+  virou_loja: 'Virou loja',
+  descartado: 'Descartado',
+}
+
+// Primeiro dia do mês corrente em Maringá (AAAA-MM-01).
+export const inicioDoMes = () => `${hoje().slice(0, 7)}-01`

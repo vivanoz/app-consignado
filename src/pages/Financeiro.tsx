@@ -7,6 +7,7 @@ import {
   useAnexar,
   useComissoes,
   useConfirmarPagamento,
+  useEstornarVendaVarejo,
   useLojas,
   useProdutos,
   useRegistrarRepasse,
@@ -49,7 +50,7 @@ export function Financeiro() {
       <Titulo>Financeiro</Titulo>
       <Abas
         abas={[
-          { id: 'lojas', nome: 'Lojas pagam' },
+          { id: 'lojas', nome: 'A receber' },
           { id: 'comissoes', nome: ehGestao ? 'Pagar representantes' : 'Você recebe' },
         ]}
         atual={area}
@@ -66,6 +67,7 @@ function AcertosDasLojas() {
   const { ehGestao } = useAcesso()
   const acertos = useAcertos()
   const lojas = useLojas()
+  const representantes = useRepresentantes()
   const produtos = useProdutos()
   const [aba, setAba] = useState<AcertoStatus>('pendente')
 
@@ -76,7 +78,9 @@ function AcertosDasLojas() {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-marrom/75">A loja paga por Pix direto à Viva Noz. Só a gestão confirma o recebimento.</p>
+      <p className="text-sm text-marrom/75">
+        A loja paga por Pix direto à Viva Noz. Na venda varejo, quem vendeu repassa o valor. Só a gestão confirma o recebimento.
+      </p>
       <Abas
         abas={[
           { id: 'pendente', nome: 'Pendentes' },
@@ -100,6 +104,7 @@ function AcertosDasLojas() {
           key={a.id}
           acerto={a}
           loja={lojas.data?.find((l) => l.id === a.loja_id)?.nome ?? 'Loja'}
+          vendedor={representantes.data?.find((r) => r.id === a.representante_id)?.nome ?? 'Representante'}
           nomeProduto={(id) => produtos.data?.find((p) => p.id === id)?.nome_curto ?? '?'}
           podeConfirmar={ehGestao}
         />
@@ -111,16 +116,20 @@ function AcertosDasLojas() {
 function CartaoAcerto({
   acerto,
   loja,
+  vendedor,
   nomeProduto,
   podeConfirmar,
 }: {
   acerto: Acerto
   loja: string
+  vendedor: string
   nomeProduto: (id: string) => string
   podeConfirmar: boolean
 }) {
   const confirmar = useConfirmarPagamento()
   const anexar = useAnexar()
+  const estornar = useEstornarVendaVarejo()
+  const varejo = acerto.modalidade === 'varejo'
   const [confirmando, setConfirmando] = useState(false)
   const [recebidoEm, setRecebidoEm] = useState(hoje())
   const pagamento = acerto.pagamentos[0]
@@ -130,11 +139,15 @@ function CartaoAcerto({
     <Cartao>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <Link to={`/lojas/${acerto.loja_id}`} className="text-[17px] font-bold underline decoration-linha underline-offset-4">
-            {loja}
-          </Link>
+          {varejo ? (
+            <p className="text-[17px] font-bold">Venda varejo · {vendedor}</p>
+          ) : (
+            <Link to={`/lojas/${acerto.loja_id}`} className="text-[17px] font-bold underline decoration-linha underline-offset-4">
+              {loja}
+            </Link>
+          )}
           <p className="text-xs text-marrom/65">
-            Visita de {data(acerto.criado_em)} · {NOME_MODALIDADE[acerto.modalidade]}
+            {varejo ? `Lançada em ${data(acerto.criado_em)} · dinheiro com ${vendedor}` : `Visita de ${data(acerto.criado_em)} · ${NOME_MODALIDADE[acerto.modalidade]}`}
           </p>
         </div>
         <p className="text-xl font-bold whitespace-nowrap">{reais(acerto.valor_total)}</p>
@@ -152,8 +165,8 @@ function CartaoAcerto({
       </ul>
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
-        {acerto.status === 'confirmado' && pagamento && <Etiqueta tom="verde">Pix recebido em {data(pagamento.recebido_em)}</Etiqueta>}
-        {pendente && <Etiqueta tom={acerto.comprovante_path ? 'ouro' : 'neutro'}>{acerto.comprovante_path ? 'Comprovante enviado, aguarda conferência' : 'Aguardando Pix'}</Etiqueta>}
+        {acerto.status === 'confirmado' && pagamento && <Etiqueta tom="verde">Recebido em {data(pagamento.recebido_em)}</Etiqueta>}
+        {pendente && <Etiqueta tom={acerto.comprovante_path ? 'ouro' : 'neutro'}>{acerto.comprovante_path ? 'Comprovante enviado, aguarda conferência' : varejo ? 'Aguardando repasse' : 'Aguardando Pix'}</Etiqueta>}
         {acerto.comprovante_path && (
           <VerArquivo espaco="comprovantes" caminho={acerto.comprovante_path}>
             Ver comprovante
@@ -179,17 +192,35 @@ function CartaoAcerto({
       {pendente && podeConfirmar && !confirmando && (
         <div className="mt-2">
           <Botao variante="secundario" cheio onClick={() => setConfirmando(true)}>
-            Confirmar Pix recebido
+            {varejo ? 'Confirmar valor recebido' : 'Confirmar Pix recebido'}
           </Botao>
+          {varejo && acerto.venda_varejo_id && (
+            <div className="mt-1 text-center">
+              <Botao
+                variante="discreto"
+                disabled={estornar.isPending}
+                onClick={() => {
+                  const motivo = window.prompt('Estornar devolve os pacotes ao estoque de quem vendeu e cancela este valor. Qual o motivo?')
+                  if (motivo?.trim()) estornar.mutate({ vendaId: acerto.venda_varejo_id!, motivo })
+                }}
+              >
+                Estornar esta venda
+              </Botao>
+            </div>
+          )}
+          <Aviso erro={estornar.error} />
         </div>
       )}
 
       {confirmando && pendente && (
         <div className="mt-3 space-y-3 border-t border-linha pt-3">
           <p className="text-sm">
-            Confira no extrato do banco se entrou um Pix de <strong>{reais(acerto.valor_total)}</strong> desta loja. A confirmação não pode ser desfeita e gera a comissão do representante.
+            {varejo
+              ? <>Confira se os <strong>{reais(acerto.valor_total)}</strong> desta venda chegaram à conta da Viva Noz.</>
+              : <>Confira no extrato do banco se entrou um Pix de <strong>{reais(acerto.valor_total)}</strong> desta loja.</>}{' '}
+            A confirmação não pode ser desfeita e gera a comissão do representante.
           </p>
-          <Campo rotulo="Data em que o Pix entrou" type="date" max={hoje()} value={recebidoEm} onChange={(e) => setRecebidoEm(e.target.value)} />
+          <Campo rotulo="Data em que o dinheiro entrou" type="date" max={hoje()} value={recebidoEm} onChange={(e) => setRecebidoEm(e.target.value)} />
           <Aviso erro={confirmar.error} />
           <Botao
             cheio
@@ -218,7 +249,7 @@ function LinhaComissao({ comissao, loja, marcada, aoMarcar }: { comissao: Comiss
           {loja} · {comissao.tipo === 'bonus_abertura' ? 'bônus de abertura' : `${porcento(comissao.percentual ?? 0)} de ${reais(comissao.base ?? 0)}`}
         </span>
         <span className={`block text-xs ${vencida ? 'font-semibold text-alerta' : 'text-marrom/65'}`}>
-          Pix da loja em {data(comissao.recebido_em)} · {comissao.status === 'paga' ? 'paga' : `vence em ${data(comissao.vencimento)}`}
+          Recebido em {data(comissao.recebido_em)} · {comissao.status === 'paga' ? 'paga' : `vence em ${data(comissao.vencimento)}`}
         </span>
       </span>
       <strong className="whitespace-nowrap">{reais(comissao.valor)}</strong>
@@ -243,7 +274,7 @@ function MinhasComissoes() {
 
   if (comissoes.isPending || repasses.isPending) return <Carregando />
 
-  const nomeLoja = (id: string) => lojas.data?.find((l) => l.id === id)?.nome ?? 'Loja'
+  const nomeLoja = (id: string | null) => (id ? (lojas.data?.find((l) => l.id === id)?.nome ?? 'Loja') : 'Venda varejo')
   const minhas = comissoes.data?.filter((c) => c.representante_id === meuRepresentanteId) ?? []
   const pendentes = minhas.filter((c) => c.status === 'pendente')
   const vencimentos = [...new Set(pendentes.map((c) => c.vencimento))].sort()
@@ -319,7 +350,7 @@ function ComissoesGestao() {
 
   if (comissoes.isPending || repasses.isPending || representantes.isPending) return <Carregando />
 
-  const nomeLoja = (id: string) => lojas.data?.find((l) => l.id === id)?.nome ?? 'Loja'
+  const nomeLoja = (id: string | null) => (id ? (lojas.data?.find((l) => l.id === id)?.nome ?? 'Loja') : 'Venda varejo')
   const pendentes = comissoes.data?.filter((c) => c.status === 'pendente') ?? []
   const comPendencia = representantes.data?.filter((r) => pendentes.some((c) => c.representante_id === r.id)) ?? []
 
@@ -353,7 +384,7 @@ function ComissoesGestao() {
   )
 }
 
-function PagarRepresentante({ representante, pendentes, nomeLoja }: { representante: Representante; pendentes: Comissao[]; nomeLoja: (id: string) => string }) {
+function PagarRepresentante({ representante, pendentes, nomeLoja }: { representante: Representante; pendentes: Comissao[]; nomeLoja: (id: string | null) => string }) {
   const registrar = useRegistrarRepasse()
   // Já vêm marcadas as que venceram; o resto a gestão marca se quiser adiantar.
   const [marcadas, setMarcadas] = useState<Set<string>>(() => new Set(pendentes.filter((c) => c.vencimento <= hoje()).map((c) => c.id)))
@@ -455,7 +486,7 @@ function RepasseFeito({
 }: {
   repasse: { id: string; valor_total: number; pago_em: string; comprovante_path: string | null; observacao: string | null }
   itens: Comissao[]
-  nomeLoja: (id: string) => string
+  nomeLoja: (id: string | null) => string
   representante: Representante | undefined
 }) {
   const anexar = useAnexar()

@@ -97,7 +97,7 @@ export function Precos() {
     e.preventDefault()
     await salvar.mutateAsync({
       produto_id: form.produto_id,
-      modalidade: form.modalidade as 'consignado' | 'compra_direta',
+      modalidade: form.modalidade as 'consignado' | 'compra_direta' | 'varejo',
       preco_loja: numero(form.preco_loja),
       preco_sugerido: form.preco_sugerido ? numero(form.preco_sugerido) : null,
       vigente_desde: form.vigente_desde,
@@ -107,7 +107,7 @@ export function Precos() {
 
   return (
     <div className="space-y-4">
-      <Titulo apoio="Preço que a loja paga por pacote. O Kit Teste usa o preço do consignado.">Preços</Titulo>
+      <Titulo apoio="Preço por pacote. O Kit Teste usa o preço do consignado. Varejo é o preço médio da venda na rua.">Preços</Titulo>
 
       <Cartao>
         <table className="w-full text-sm">
@@ -116,17 +116,20 @@ export function Precos() {
               <th className="pb-1 font-semibold">Hoje</th>
               <th className="pb-1 text-right font-semibold">Consignado</th>
               <th className="pb-1 text-right font-semibold">Direta</th>
+              <th className="pb-1 text-right font-semibold">Varejo</th>
             </tr>
           </thead>
           <tbody>
             {produtos.data?.map((p) => {
               const consignado = precoVigente(precos.data ?? [], p.id, 'consignado')
               const direta = precoVigente(precos.data ?? [], p.id, 'compra_direta')
+              const varejo = precoVigente(precos.data ?? [], p.id, 'varejo')
               return (
                 <tr key={p.id} className="border-t border-linha">
                   <td className="py-2">{p.nome_curto}</td>
                   <td className="py-2 text-right font-bold">{consignado ? reais(consignado.preco_loja) : 'sem preço'}</td>
                   <td className="py-2 text-right font-bold">{direta ? reais(direta.preco_loja) : 'sem preço'}</td>
+                  <td className="py-2 text-right font-bold">{varejo ? reais(varejo.preco_loja) : 'sem preço'}</td>
                 </tr>
               )
             })}
@@ -149,9 +152,10 @@ export function Precos() {
           <Selecao rotulo="Modalidade" value={form.modalidade} onChange={(e) => setForm({ ...form, modalidade: e.target.value })}>
             <option value="consignado">{NOME_MODALIDADE.consignado} e Kit Teste</option>
             <option value="compra_direta">{NOME_MODALIDADE.compra_direta}</option>
+            <option value="varejo">{NOME_MODALIDADE.varejo} (preço médio na rua)</option>
           </Selecao>
           <div className="grid grid-cols-2 gap-3">
-            <Campo rotulo="Loja paga (R$)" inputMode="decimal" required pattern="\d+([.,]\d{1,2})?" placeholder="12,90" value={form.preco_loja} onChange={(e) => setForm({ ...form, preco_loja: e.target.value })} />
+            <Campo rotulo="Preço (R$)" inputMode="decimal" required pattern="\d+([.,]\d{1,2})?" placeholder="12,90" value={form.preco_loja} onChange={(e) => setForm({ ...form, preco_loja: e.target.value })} />
             <Campo rotulo="Sugerido (R$)" inputMode="decimal" pattern="\d+([.,]\d{1,2})?" placeholder="16,90" value={form.preco_sugerido} onChange={(e) => setForm({ ...form, preco_sugerido: e.target.value })} />
           </div>
           <Campo rotulo="Vale a partir de" type="date" required value={form.vigente_desde} onChange={(e) => setForm({ ...form, vigente_desde: e.target.value })} />

@@ -1,8 +1,8 @@
 import { CartaoLoja } from '../components/CartaoLoja'
 import { BotaoLink, Cartao, Carregando, Rotulo, SaldoPorProduto, Titulo } from '../components/ui'
-import { useAcertos, useComissoes, usePerfis, useProdutos, useSaldosRepresentante } from '../lib/api'
+import { useAcertos, useAmostras, useComissoes, usePerfis, useProdutos, useProspectos, useSaldosRepresentante } from '../lib/api'
 import { useAcesso } from '../lib/auth'
-import { data, hoje, pacotes, reais } from '../lib/formato'
+import { data, hoje, inicioDoMes, pacotes, reais } from '../lib/formato'
 import { porUrgencia, useResumoLojas } from '../lib/resumo'
 
 const soma = (valores: number[]) => valores.reduce((s, v) => s + Number(v), 0)
@@ -16,6 +16,14 @@ export function Inicio() {
   const acertos = useAcertos(comLojas)
   const comissoes = useComissoes(comLojas)
   const perfis = usePerfis()
+  const amostras = useAmostras(comLojas)
+  const prospectos = useProspectos(comLojas)
+
+  // Varejo e amostras do mês corrente, de quem a pessoa enxerga.
+  const doMes = (acertos.data ?? []).filter((a) => a.modalidade === 'varejo' && a.status !== 'cancelado' && a.criado_em.slice(0, 10) >= inicioDoMes())
+  const varejoMes = { valor: soma(doMes.map((a) => a.valor_total)), pacotes: soma(doMes.flatMap((a) => a.acerto_itens.map((i) => i.quantidade))) }
+  const amostrasMes = soma((amostras.data ?? []).filter((a) => a.entregue_em >= inicioDoMes()).flatMap((a) => a.amostra_itens.map((i) => i.quantidade)))
+  const emAberto = (prospectos.data ?? []).filter((p) => p.status === 'novo' || p.status === 'em_conversa').length
 
   if (produtos.isPending || saldosRep.isPending || carregando) return <Carregando />
 
@@ -85,6 +93,16 @@ export function Inicio() {
             <p className="mt-2 text-3xl font-bold">{soma((saldosRep.data ?? []).map((s) => s.saldo))}</p>
             <p className="text-xs text-marrom/65">pacotes retirados, fora de loja</p>
           </Cartao>
+          <Cartao>
+            <Rotulo>Varejo no mês</Rotulo>
+            <p className="mt-2 text-2xl font-bold">{reais(varejoMes.valor)}</p>
+            <p className="text-xs text-marrom/65">{pacotes(varejoMes.pacotes)} vendidos na rua</p>
+          </Cartao>
+          <Cartao>
+            <Rotulo>Amostras no mês</Rotulo>
+            <p className="mt-2 text-3xl font-bold">{amostrasMes}</p>
+            <p className="text-xs text-marrom/65">{emAberto} {emAberto === 1 ? 'potencial cliente' : 'potenciais clientes'} em aberto</p>
+          </Cartao>
         </div>
         <BotaoLink para="/financeiro" variante="secundario" cheio>
           Abrir financeiro
@@ -103,7 +121,9 @@ export function Inicio() {
     }))
     const minhasComissoes = (comissoes.data ?? []).filter((c) => c.representante_id === meuRepresentanteId && c.status === 'pendente')
     const proximo = minhasComissoes.map((c) => c.vencimento).sort()[0]
-    const lojasDevem = (acertos.data ?? []).filter((a) => a.status === 'pendente' && a.representante_id === meuRepresentanteId)
+    const meusPendentes = (acertos.data ?? []).filter((a) => a.status === 'pendente' && a.representante_id === meuRepresentanteId)
+    const lojasDevem = meusPendentes.filter((a) => a.modalidade !== 'varejo')
+    const varejoARepassar = soma(meusPendentes.filter((a) => a.modalidade === 'varejo').map((a) => a.valor_total))
 
     return (
       <section className="space-y-3">
@@ -144,9 +164,25 @@ export function Inicio() {
           ))}
         </div>
 
+        {varejoARepassar > 0 && (
+          <Cartao className="border-ouro bg-ouro/10">
+            <Rotulo>Varejo a repassar</Rotulo>
+            <p className="mt-1 text-2xl font-bold">{reais(varejoARepassar)}</p>
+            <p className="text-xs text-marrom/70">Vendas na rua lançadas e ainda sem confirmação de que o dinheiro chegou à Viva Noz.</p>
+          </Cartao>
+        )}
+
         <BotaoLink para="/lojas" cheio>
           Ver lojas e registrar visita
         </BotaoLink>
+        <div className="grid grid-cols-2 gap-3">
+          <BotaoLink para="/varejo" variante="secundario">
+            Venda varejo
+          </BotaoLink>
+          <BotaoLink para="/potenciais" variante="secundario">
+            Amostras
+          </BotaoLink>
+        </div>
       </section>
     )
   }

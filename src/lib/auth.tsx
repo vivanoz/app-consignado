@@ -78,7 +78,8 @@ export function ProvedorDeAcesso({ children }: { children: ReactNode }) {
     senhaDefinida: () => setPrecisaDefinirSenha(false),
     sair: async () => {
       setVisao(null)
-      await supabase.auth.signOut()
+      // Sai só deste aparelho; a pessoa continua logada nos outros.
+      await supabase.auth.signOut({ scope: 'local' })
     },
   }
 

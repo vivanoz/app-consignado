@@ -1,7 +1,9 @@
 // Espelho das tabelas do Supabase (supabase/migrations).
 
 export type Papel = 'gestao' | 'producao' | 'representante'
-export type Modalidade = 'kit_teste' | 'consignado' | 'compra_direta'
+export type Modalidade = 'kit_teste' | 'consignado' | 'compra_direta' | 'varejo'
+// Modalidades em que uma loja pode estar (varejo é venda na rua, sem loja).
+export type ModalidadeLoja = Exclude<Modalidade, 'varejo'>
 export type LojaStatus = 'ativa' | 'pausada' | 'encerrada'
 export type AcertoStatus = 'pendente' | 'confirmado' | 'cancelado'
 
@@ -108,8 +110,10 @@ export interface AcertoItem {
 
 export interface Acerto {
   id: string
-  visita_id: string
-  loja_id: string
+  // Acerto de loja tem visita e loja; acerto de venda varejo tem só a venda.
+  visita_id: string | null
+  loja_id: string | null
+  venda_varejo_id: string | null
   representante_id: string
   modalidade: Modalidade
   valor_total: number
@@ -154,7 +158,7 @@ export interface Comissao {
   representante_id: string
   tipo: 'comissao' | 'bonus_abertura'
   acerto_id: string
-  loja_id: string
+  loja_id: string | null
   base: number | null
   percentual: number | null
   valor: number
@@ -183,6 +187,34 @@ export interface Condicao {
   representante_id: string
   comissao_consignado: number
   comissao_direta: number
+  comissao_varejo: number
   bonus_abertura: number
   vigente_desde: string
+}
+
+export type ProspectoStatus = 'novo' | 'em_conversa' | 'virou_loja' | 'descartado'
+
+export interface Prospecto {
+  id: string
+  nome: string
+  segmento: string | null
+  endereco: string | null
+  bairro: string | null
+  cidade: string
+  contato_nome: string | null
+  contato_telefone: string | null
+  representante_id: string
+  status: ProspectoStatus
+  loja_id: string | null
+  observacoes: string | null
+  criado_em: string
+}
+
+export interface Amostra {
+  id: string
+  prospecto_id: string
+  representante_id: string
+  entregue_em: string
+  observacoes: string | null
+  amostra_itens: { produto_id: string; quantidade: number }[]
 }
