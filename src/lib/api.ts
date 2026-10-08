@@ -5,16 +5,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from './supabase'
 import type {
   Acerto,
+  Comissao,
+  Condicao,
   ItemVisitaEnvio,
   Loja,
   Movimentacao,
   Perfil,
   Preco,
   Produto,
+  Repasse,
   Representante,
   ResultadoVisita,
   SaldoLoja,
   SaldoRepresentante,
+  UltimaVisita,
   Visita,
 } from './tipos'
 
@@ -194,11 +198,93 @@ export const useSalvarPerfil = () =>
   })
 
 export const useSalvarRepresentante = () =>
-  useEscrita(async (r: Partial<Representante>) => {
-    const { id, ...campos } = r
+  useEscrita(async (r: Partial<Representante> & { condicao?: Partial<Condicao> }) => {
+    const { id, condicao, ...campos } = r
     if (id) return ler(supabase.from('representantes').update(campos).eq('id', id))
     const novo = await ler<Representante>(supabase.from('representantes').insert(campos).select().single())
-    // Condições padrão do combinado: 15% consignado, 12% compra direta, bônus de R$ 30.
-    await ler(supabase.from('representante_condicoes').insert({ representante_id: novo.id }))
+    // Sem condição informada, vale o combinado padrão: 15% consignado, 12% direta, bônus de R$ 30.
+    await ler(supabase.from('representante_condicoes').insert({ ...condicao, representante_id: novo.id }))
     return novo
+  })
+
+export const useUltimasVisitas = (ativo = true) =>
+  useQuery({
+    queryKey: ['ultimas-visitas'],
+    enabled: ativo,
+    queryFn: () => ler<UltimaVisita[]>(supabase.from('lojas_ultima_visita').select('*')),
+  })
+
+export const useComissoes = (ativo = true) =>
+  useQuery({
+    queryKey: ['comissoes'],
+    enabled: ativo,
+    queryFn: () => ler<Comissao[]>(supabase.from('comissoes').select('*').order('vencimento').limit(1000)),
+  })
+
+export const useRepasses = (ativo = true) =>
+  useQuery({
+    queryKey: ['repasses'],
+    enabled: ativo,
+    queryFn: () => ler<Repasse[]>(supabase.from('repasses').select('*').order('pago_em', { ascending: false }).limit(200)),
+  })
+
+export const useCondicoes = (ativo = true) =>
+  useQuery({
+    queryKey: ['condicoes'],
+    enabled: ativo,
+    queryFn: () =>
+      ler<Condicao[]>(
+        supabase.from('representante_condicoes').select('*').order('vigente_desde', { ascending: false }).order('criado_em', { ascending: false }),
+      ),
+  })
+
+export const useRegistrarRepasse = () =>
+  useEscrita((r: { id: string; representanteId: string; comissaoIds: string[]; pagoEm: string; comprovantePath: string | null; observacao: string }) =>
+    chamar<{ repasse_id: string; valor_total: number }>('registrar_repasse', {
+      p_id: r.id,
+      p_representante_id: r.representanteId,
+      p_comissao_ids: r.comissaoIds,
+      p_pago_em: r.pagoEm,
+      p_comprovante_path: r.comprovantePath,
+      p_observacao: r.observacao || null,
+    }),
+  )
+
+// Liga um arquivo já enviado ao registro dele.
+export const useAnexar = () =>
+  useEscrita((a: { alvo: 'acerto' | 'repasse' | 'visita' | 'representante'; id: string; path: string }) => {
+    const funcao = {
+      acerto: ['anexar_comprovante_acerto', 'p_acerto_id'],
+      repasse: ['anexar_comprovante_repasse', 'p_repasse_id'],
+      visita: ['anexar_foto_visita', 'p_visita_id'],
+      representante: ['definir_foto_representante', 'p_representante_id'],
+    }[a.alvo]
+    return chamar(funcao[0], { [funcao[1]]: a.id, p_path: a.path })
+  })
+
+export const useSalvarCondicao = () =>
+  useEscrita((c: Condicao) => ler(supabase.from('representante_condicoes').insert(c)))
+
+export interface NovoUsuario {
+  nome: string
+  email: string
+  senha: string
+  papel: string
+  telefone: string
+  faz_visitas: boolean
+  comissao_consignado: number
+  comissao_direta: number
+  bonus_abertura: number
+}
+
+// Criar login exige a chave de serviço, então passa pela função do servidor.
+export const useCriarUsuario = () =>
+  useEscrita(async (u: NovoUsuario) => {
+    const { data, error } = await supabase.functions.invoke('criar-usuario', { body: u })
+    if (error) {
+      const corpo = await (error as { context?: Response }).context?.json?.().catch(() => null)
+      throw new Error(corpo?.erro ?? error.message)
+    }
+    if (data?.erro) throw new Error(data.erro)
+    return data as { id: string; representante_id: string | null }
   })

@@ -40,6 +40,7 @@ export interface Representante {
   telefone: string | null
   territorio: string | null
   ativo: boolean
+  foto_path: string | null
 }
 
 export interface Loja {
@@ -60,6 +61,7 @@ export interface Loja {
   status: LojaStatus
   data_abertura: string
   observacoes: string | null
+  foto_path: string | null
 }
 
 export interface Saldo {
@@ -93,6 +95,7 @@ export interface Visita {
   observacoes: string | null
   estornada_em: string | null
   estorno_motivo: string | null
+  foto_path: string | null
   visita_itens: VisitaItem[]
 }
 
@@ -113,6 +116,7 @@ export interface Acerto {
   status: AcertoStatus
   criado_em: string
   confirmado_em: string | null
+  comprovante_path: string | null
   acerto_itens: AcertoItem[]
   pagamentos: { recebido_em: string; valor: number }[]
 }
@@ -143,4 +147,42 @@ export interface ResultadoVisita {
   acerto_id: string | null
   valor_total: number
   repetida: boolean
+}
+
+export interface Comissao {
+  id: string
+  representante_id: string
+  tipo: 'comissao' | 'bonus_abertura'
+  acerto_id: string
+  loja_id: string
+  base: number | null
+  percentual: number | null
+  valor: number
+  recebido_em: string
+  vencimento: string
+  status: 'pendente' | 'paga'
+  repasse_id: string | null
+}
+
+export interface Repasse {
+  id: string
+  representante_id: string
+  valor_total: number
+  pago_em: string
+  comprovante_path: string | null
+  observacao: string | null
+}
+
+export interface UltimaVisita {
+  loja_id: string
+  ultima_visita: string
+  visitas: number
+}
+
+export interface Condicao {
+  representante_id: string
+  comissao_consignado: number
+  comissao_direta: number
+  bonus_abertura: number
+  vigente_desde: string
 }

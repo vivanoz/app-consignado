@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AreaDeTexto, Aviso, Botao, BotaoLink, Cartao, Carregando, Contador, Rotulo, Titulo, Vazio } from '../components/ui'
-import { useLoja, usePrecos, useProdutos, useRegistrarVisita, useSaldosLoja, useSaldosRepresentante } from '../lib/api'
+import { useAnexar, useLoja, usePrecos, useProdutos, useRegistrarVisita, useSaldosLoja, useSaldosRepresentante } from '../lib/api'
 import { hoje, linkWhatsApp, pacotes, precoVigente, reais, data } from '../lib/formato'
+import { enviarArquivo } from '../lib/arquivos'
 import type { ItemVisitaEnvio, ResultadoVisita } from '../lib/tipos'
 
 type Linha = Omit<ItemVisitaEnvio, 'produto_id'>
@@ -35,6 +36,9 @@ export function NovaVisita() {
   const saldosLoja = useSaldosLoja()
   const saldosRep = useSaldosRepresentante()
   const registrar = useRegistrarVisita()
+  const anexar = useAnexar()
+  const [foto, setFoto] = useState<File | null>(null)
+  const [avisoFoto, setAvisoFoto] = useState('')
 
   const [rascunho, setRascunho] = useState<Rascunho>(() => lerRascunho(lojaId))
   const [conferindo, setConferindo] = useState(false)
@@ -92,6 +96,15 @@ export function NovaVisita() {
     const resumo = linhas.filter((x) => x.vendido > 0).map((x) => `${x.produto.nome}: ${x.vendido} x ${reais(x.preco ?? 0)}`)
     const r = await registrar.mutateAsync({ id: rascunho.id, lojaId, itens, observacoes: rascunho.observacoes })
     localStorage.removeItem(chave(lojaId))
+    // A visita já está gravada; se a foto falhar, a visita continua valendo.
+    if (foto) {
+      try {
+        const path = await enviarArquivo('fotos', 'visitas', r.visita_id, foto)
+        await anexar.mutateAsync({ alvo: 'visita', id: r.visita_id, path })
+      } catch {
+        setAvisoFoto('A visita foi gravada, mas a foto não subiu.')
+      }
+    }
     setResultado({ ...r, resumo })
   }
 
@@ -108,6 +121,7 @@ export function NovaVisita() {
     return (
       <div className="space-y-4">
         <Titulo apoio={l.nome}>Visita registrada.</Titulo>
+        {avisoFoto && <Aviso>{avisoFoto}</Aviso>}
         {resultado.acerto_id ? (
           <Cartao className="border-ouro bg-ouro/10">
             <Rotulo>Valor do acerto</Rotulo>
@@ -171,6 +185,16 @@ export function NovaVisita() {
           <p className="mt-1 text-4xl font-bold">{reais(valor)}</p>
           <p className="text-xs text-marrom/70">{pacotes(totalVendido)} vendidos</p>
         </Cartao>
+        <label className="block rounded-2xl border border-dashed border-marrom/30 p-4 text-sm font-semibold">
+          Foto do expositor {foto ? '· anexada' : '(opcional)'}
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(e) => setFoto(e.target.files?.[0] ?? null)}
+            className="mt-2 block w-full text-sm font-normal file:mr-3 file:min-h-11 file:rounded-xl file:border file:border-marrom/30 file:bg-transparent file:px-4 file:font-semibold file:text-marrom"
+          />
+        </label>
         <p className="text-sm text-marrom/75">Depois de gravar, a visita não pode ser editada. Se houver erro, a gestão faz o estorno.</p>
         <Aviso erro={registrar.error} />
         <Botao cheio disabled={registrar.isPending} onClick={enviar}>

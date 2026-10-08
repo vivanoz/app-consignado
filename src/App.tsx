@@ -3,14 +3,15 @@ import { Layout } from './components/Layout'
 import { Carregando } from './components/ui'
 import { useAcesso } from './lib/auth'
 import { configurado } from './lib/supabase'
-import { Acertos } from './pages/Acertos'
 import { DefinirSenha, Entrada, SemAcesso, SemConfiguracao } from './pages/Entrada'
 import { Estoque } from './pages/Estoque'
+import { Financeiro } from './pages/Financeiro'
 import { Inicio } from './pages/Inicio'
 import { LojaDetalhe } from './pages/LojaDetalhe'
 import { LojaForm } from './pages/LojaForm'
 import { Lojas } from './pages/Lojas'
-import { Equipe, Mais, Precos } from './pages/Mais'
+import { Equipe } from './pages/Equipe'
+import { Mais, Precos } from './pages/Mais'
 import { NovaVisita } from './pages/NovaVisita'
 
 export function App() {
@@ -37,7 +38,7 @@ export function App() {
             <Route path="lojas/:id" element={<LojaDetalhe />} />
             <Route path="lojas/:id/editar" element={<LojaForm />} />
             <Route path="lojas/:id/visita" element={<NovaVisita />} />
-            <Route path="acertos" element={<Acertos />} />
+            <Route path="financeiro" element={<Financeiro />} />
           </>
         )}
         {ehGestao && (

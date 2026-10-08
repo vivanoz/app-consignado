@@ -11,6 +11,8 @@ App de controle da operação em consignação da Viva Noz: estoque com represen
 - Quem barra acesso é o banco (RLS + funções). O menu do app só esconde o que a pessoa não usa.
 - Custo, margem e comissão de terceiros não aparecem para representante nem produção. Não colocar custos nem dados de clientes em arquivos do repositório.
 - Migração aplicada em produção não se altera: cria-se uma nova.
+- Comissão nasce quando a gestão confirma o Pix da loja e vence no 5º dia útil (segunda a sexta, fora `feriados`) do mês seguinte ao do Pix. Pagamento ao representante é um repasse que agrupa comissões.
+- Fotos e comprovantes ficam no Storage, em espaços privados; a pasta do arquivo (`lojas/<id>/…`, `acertos/<id>/…`) define quem pode ver.
 - Texto de interface em português, na voz da marca: frases curtas, ponto final, sem exclamação.
 
 ## Comandos
@@ -19,4 +21,5 @@ App de controle da operação em consignação da Viva Noz: estoque com represen
 - `npm test`: sobe um Postgres em memória, aplica as migrações e testa regras e permissões.
 - `npm run build`: checa tipos e gera `dist/`.
 - `npx supabase db push`: aplica migrações novas no projeto Supabase ligado.
+- `npx supabase functions deploy criar-usuario --use-api`: publica a função que a gestão usa para criar usuários.
 - `npm run publicar`: testa, compila e põe a versão no ar em https://vivanoz.github.io/app-consignado/ (GitHub Pages, branch `gh-pages`). O repositório é público: nada de segredo, custo ou dado de cliente em arquivo versionado.

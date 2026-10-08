@@ -28,6 +28,8 @@ Qualquer pessoa cria a conta em **Primeiro acesso**, mas ela nasce bloqueada e n
 - Só a gestão confirma pagamento, e só com o valor exato do acerto.
 - Lançamento não se edita nem se apaga. Erro se corrige com estorno, que fica no histórico.
 - Reenviar o mesmo lançamento (internet ruim) não duplica nada.
+- Confirmar o Pix de uma loja gera a comissão do representante, com vencimento no 5º dia útil do mês seguinte. O bônus de abertura sai no segundo acerto pago da loja.
+- O pagamento ao representante agrupa comissões, soma o valor e guarda o comprovante.
 
 ## Rodar no computador
 
@@ -66,4 +68,4 @@ Roda os testes, compila e envia para o GitHub Pages: https://vivanoz.github.io/a
 
 ## Fora desta versão
 
-Fechamento mensal e comissão do representante, estoque da fábrica e de insumos, contagem mensal com desconto, comprovante de Pix anexado, pagamento parcial de acerto.
+Estoque da fábrica e de insumos, contagem mensal do estoque do representante com desconto, pagamento parcial de acerto, e-mails próprios (exigem serviço de envio).

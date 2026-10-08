@@ -1,13 +1,14 @@
 import { useState, type FormEvent } from 'react'
-import { Aviso, Botao, BotaoLink, Campo, Cartao, Carregando, Etiqueta, Rotulo, Selecao, Titulo, Vazio } from '../components/ui'
-import { usePerfis, usePrecos, useProdutos, useRepresentantes, useSalvarPerfil, useSalvarPreco, useSalvarRepresentante } from '../lib/api'
+import { EnviarArquivo, Foto } from '../components/arquivos'
+import { Aviso, Botao, BotaoLink, Campo, Cartao, Carregando, Rotulo, Selecao, Titulo, Vazio } from '../components/ui'
+import { useAnexar, usePrecos, useProdutos, useRepresentantes, useSalvarPreco } from '../lib/api'
 import { useAcesso } from '../lib/auth'
 import { NOME_MODALIDADE, NOME_PAPEL, data, hoje, precoVigente, reais } from '../lib/formato'
 import { supabase } from '../lib/supabase'
-import type { Papel } from '../lib/tipos'
 
 export function Mais() {
-  const { perfil, papel, ehGestao, sair } = useAcesso()
+  const { perfil, papel, ehGestao, meuRepresentanteId, sair } = useAcesso()
+  const anexar = useAnexar()
   const [senha, setSenha] = useState('')
   const [recado, setRecado] = useState('')
   const [erro, setErro] = useState<unknown>(null)
@@ -40,10 +41,22 @@ export function Mais() {
 
       <Cartao>
         <Rotulo>Sua conta</Rotulo>
-        <p className="mt-2 font-bold">{perfil?.nome}</p>
-        <p className="text-sm text-marrom/70">
-          {perfil?.email} · {papel && NOME_PAPEL[papel]}
-        </p>
+        <div className="mt-3 flex items-center gap-3">
+          <FotoDoRepresentante id={meuRepresentanteId} nome={perfil?.nome ?? ''} />
+          <div className="min-w-0">
+            <p className="font-bold">{perfil?.nome}</p>
+            <p className="truncate text-sm text-marrom/70">
+              {perfil?.email} · {papel && NOME_PAPEL[papel]}
+            </p>
+          </div>
+        </div>
+        {meuRepresentanteId && (
+          <div className="mt-2">
+            <EnviarArquivo espaco="fotos" pasta="representantes" id={meuRepresentanteId} variante="discreto" aoEnviar={(path) => anexar.mutateAsync({ alvo: 'representante', id: meuRepresentanteId, path })}>
+              Trocar minha foto
+            </EnviarArquivo>
+          </div>
+        )}
         <form onSubmit={trocarSenha} className="mt-4 space-y-3">
           <Campo rotulo="Nova senha (mínimo de 8 caracteres)" type="password" autoComplete="new-password" minLength={8} required value={senha} onChange={(e) => setSenha(e.target.value)} />
           <Aviso erro={erro} />
@@ -59,6 +72,11 @@ export function Mais() {
       </Botao>
     </div>
   )
+}
+
+function FotoDoRepresentante({ id, nome }: { id: string | null; nome: string }) {
+  const representantes = useRepresentantes()
+  return <Foto caminho={representantes.data?.find((r) => r.id === id)?.foto_path} nome={nome} className="size-14 shrink-0" />
 }
 
 export function Precos() {
@@ -156,122 +174,6 @@ export function Precos() {
             ))}
           </Cartao>
         )}
-      </section>
-    </div>
-  )
-}
-
-export function Equipe() {
-  const { perfil: eu } = useAcesso()
-  const perfis = usePerfis()
-  const representantes = useRepresentantes()
-  const salvarPerfil = useSalvarPerfil()
-  const salvarRepresentante = useSalvarRepresentante()
-  const [novo, setNovo] = useState({ nome: '', telefone: '', perfil_id: '' })
-
-  if (perfis.isPending || representantes.isPending) return <Carregando />
-
-  const semVinculo = perfis.data?.filter((p) => !representantes.data?.some((r) => r.perfil_id === p.id)) ?? []
-
-  async function criarRepresentante(e: FormEvent) {
-    e.preventDefault()
-    await salvarRepresentante.mutateAsync({
-      nome: novo.nome.trim(),
-      telefone: novo.telefone.trim() || null,
-      perfil_id: novo.perfil_id || null,
-      territorio: 'Maringá · arenas de jogos de praia',
-    })
-    setNovo({ nome: '', telefone: '', perfil_id: '' })
-  }
-
-  return (
-    <div className="space-y-4">
-      <Titulo apoio="Quem entra no app e o que cada pessoa enxerga.">Equipe</Titulo>
-
-      <section className="space-y-2.5">
-        <Rotulo>Acessos</Rotulo>
-        <Aviso erro={salvarPerfil.error} />
-        {perfis.data?.map((p) => (
-          <Cartao key={p.id}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-bold">{p.nome}</p>
-                <p className="truncate text-xs text-marrom/65">{p.email}</p>
-              </div>
-              <Etiqueta tom={p.ativo ? 'verde' : 'ouro'}>{p.ativo ? 'Ativo' : 'Aguardando'}</Etiqueta>
-            </div>
-            <div className="mt-3 grid grid-cols-[1fr_auto] items-end gap-3">
-              <Selecao
-                rotulo="Perfil"
-                value={p.papel}
-                disabled={p.id === eu?.id}
-                onChange={(e) => salvarPerfil.mutate({ id: p.id, papel: e.target.value as Papel })}
-              >
-                {(Object.keys(NOME_PAPEL) as Papel[]).map((papel) => (
-                  <option key={papel} value={papel}>
-                    {NOME_PAPEL[papel]}
-                  </option>
-                ))}
-              </Selecao>
-              {p.id !== eu?.id && (
-                <Botao variante={p.ativo ? 'secundario' : 'primario'} onClick={() => salvarPerfil.mutate({ id: p.id, ativo: !p.ativo })}>
-                  {p.ativo ? 'Bloquear' : 'Liberar'}
-                </Botao>
-              )}
-            </div>
-          </Cartao>
-        ))}
-        <p className="text-xs text-marrom/65">
-          Para incluir uma pessoa, peça que ela abra o app, toque em "Primeiro acesso" e crie a conta. Ela aparece aqui como "Aguardando" até você escolher o perfil e liberar. Só libere quem você reconhece.
-        </p>
-      </section>
-
-      <section className="space-y-2.5">
-        <Rotulo>Representantes</Rotulo>
-        <Aviso erro={salvarRepresentante.error} />
-        {representantes.data?.length === 0 && <Vazio>Nenhum representante. Cadastre quem faz as visitas, inclusive quem é da gestão.</Vazio>}
-        {representantes.data?.map((r) => (
-          <Cartao key={r.id}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-bold">{r.nome}</p>
-                <p className="text-xs text-marrom/65">{[r.telefone, r.territorio].filter(Boolean).join(' · ')}</p>
-              </div>
-              <Botao variante="discreto" onClick={() => salvarRepresentante.mutate({ id: r.id, ativo: !r.ativo })}>
-                {r.ativo ? 'Desativar' : 'Reativar'}
-              </Botao>
-            </div>
-            <div className="mt-2">
-              <Selecao rotulo="Entra no app como" value={r.perfil_id ?? ''} onChange={(e) => salvarRepresentante.mutate({ id: r.id, perfil_id: e.target.value || null })}>
-                <option value="">Sem acesso ao app</option>
-                {perfis.data?.filter((p) => p.id === r.perfil_id || semVinculo.includes(p)).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nome} ({p.email})
-                  </option>
-                ))}
-              </Selecao>
-            </div>
-          </Cartao>
-        ))}
-
-        <Cartao>
-          <Rotulo>Novo representante</Rotulo>
-          <form onSubmit={criarRepresentante} className="mt-3 space-y-3">
-            <Campo rotulo="Nome" required value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} />
-            <Campo rotulo="WhatsApp" type="tel" inputMode="tel" value={novo.telefone} onChange={(e) => setNovo({ ...novo, telefone: e.target.value })} />
-            <Selecao rotulo="Entra no app como" value={novo.perfil_id} onChange={(e) => setNovo({ ...novo, perfil_id: e.target.value })}>
-              <option value="">Sem acesso ao app por enquanto</option>
-              {semVinculo.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nome} ({p.email})
-                </option>
-              ))}
-            </Selecao>
-            <Botao type="submit" cheio disabled={salvarRepresentante.isPending}>
-              Cadastrar representante
-            </Botao>
-          </form>
-        </Cartao>
       </section>
     </div>
   )

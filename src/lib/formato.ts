@@ -68,3 +68,17 @@ export function linkWhatsApp(telefone: string | null, mensagem: string) {
   if (numero && !numero.startsWith('55')) numero = `55${numero}`
   return `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`
 }
+
+// Uma loja em consignação precisa de reposição quando algum sabor em linha
+// está com este número de pacotes ou menos.
+export const REPOR_ATE = 3
+
+export const diasDesde = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
+
+export const haQuanto = (iso: string | undefined) => {
+  if (!iso) return 'nunca visitada'
+  const dias = diasDesde(iso)
+  return dias === 0 ? 'visitada hoje' : dias === 1 ? 'visitada ontem' : `visitada há ${dias} dias`
+}
+
+export const porcento = (fracao: number) => `${(Number(fracao) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`

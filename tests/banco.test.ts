@@ -37,6 +37,9 @@ beforeAll(async () => {
   ;[{ id: repAna }] = await b.como(gestao, `insert into public.representantes (nome, perfil_id) values ('Ana', $1) returning id`, [ana])
   ;[{ id: repBia }] = await b.como(gestao, `insert into public.representantes (nome, perfil_id) values ('Bia', $1) returning id`, [bia])
 
+  // Combinado padrão: 15% no consignado, 12% na compra direta, bônus de R$ 30.
+  await b.como(gestao, `insert into public.representante_condicoes (representante_id, vigente_desde) values ($1, date '2026-01-01'), ($2, date '2026-01-01')`, [repAna, repBia])
+
   await b.como(gestao, `
     insert into public.precos (produto_id, modalidade, preco_loja, preco_sugerido, vigente_desde)
     select p.id, m.modalidade::public.modalidade, v.preco - m.desconto, 16.90, date '2026-01-01'
@@ -279,5 +282,138 @@ describe('histórico', () => {
     const linhas = await b.como(gestao, `select operacao, autor, antes ->> 'contato_nome' as antes, depois ->> 'contato_nome' as depois
       from public.auditoria where tabela = 'lojas' and registro_id = $1 and operacao = 'UPDATE' order by id limit 1`, [lojaAna])
     expect(linhas[0]).toEqual({ operacao: 'UPDATE', autor: ana, antes: null, depois: 'João' })
+  })
+})
+
+describe('comissão do representante', () => {
+  const comissoes = (uid: string) =>
+    b.como(uid, `select tipo, valor::float, base::float, percentual::float, status, vencimento::text, recebido_em::text from public.comissoes order by criado_em, tipo`)
+
+  it('vencimento é o 5º dia útil do mês seguinte ao do Pix', async () => {
+    const [d] = await b.admin(`select
+      public.vencimento_comissao(date '2026-09-30')::text as set30,
+      public.vencimento_comissao(date '2026-10-01')::text as out01,
+      public.vencimento_comissao(date '2026-10-31')::text as out31,
+      public.vencimento_comissao(date '2026-12-15')::text as dez15`)
+    // Outubro/2026 começa numa quinta: 1, 2, 5, 6, 7.
+    expect(d.set30).toBe('2026-10-07')
+    // Novembro/2026: dia 1 é domingo e dia 2 é Finados: 3, 4, 5, 6, 9.
+    expect(d.out01).toBe('2026-11-09')
+    expect(d.out31).toBe('2026-11-09')
+    // Janeiro/2027: dia 1 é feriado, 2 e 3 são fim de semana: 4, 5, 6, 7, 8.
+    expect(d.dez15).toBe('2027-01-08')
+  })
+
+  it('confirmar o Pix gera a comissão com percentual, valor e vencimento', async () => {
+    const [esperado] = await b.admin(`select public.vencimento_comissao(app.hoje())::text as v, app.hoje()::text as hoje`)
+    // Acerto de 141,80 da Arena Sol confirmado acima: 15% = 21,27.
+    // A compra direta da Arena Lua ainda não foi paga: sem comissão.
+    expect(await comissoes(gestao)).toEqual([
+      { tipo: 'comissao', valor: 21.27, base: 141.8, percentual: 0.15, status: 'pendente', vencimento: esperado.v, recebido_em: esperado.hoje },
+    ])
+  })
+
+  it('compra direta paga gera comissão de 12%', async () => {
+    const [a] = await b.admin(`select id, valor_total::float as valor from public.acertos where loja_id = $1 and status = 'pendente'`, [lojaBia])
+    await b.como(gestao, `select public.confirmar_pagamento($1, $2)`, [a.id, a.valor])
+    const [c] = await b.admin(`select valor::float, percentual::float from public.comissoes where acerto_id = $1`, [a.id])
+    expect(c).toEqual({ valor: 41.64, percentual: 0.12 }) // 12% de 347,00
+  })
+
+  it('segundo acerto pago da loja libera o bônus de abertura, uma única vez', async () => {
+    const r = await visita(ana, lojaAna, { 'MIX-100': { encontrado: 8 }, 'CAR-100': { encontrado: 10 }, 'CAJU-100': { encontrado: 3 } })
+    expect(Number(r.valor_total)).toBe(25.8)
+    await b.como(gestao, `select public.confirmar_pagamento($1, 25.80)`, [r.acerto_id])
+    const doAcerto = await b.admin(`select tipo, valor::float from public.comissoes where acerto_id = $1 order by tipo`, [r.acerto_id])
+    expect(doAcerto).toEqual([{ tipo: 'comissao', valor: 3.87 }, { tipo: 'bonus_abertura', valor: 30 }])
+
+    const r3 = await visita(ana, lojaAna, { 'MIX-100': { encontrado: 7 }, 'CAR-100': { encontrado: 10 }, 'CAJU-100': { encontrado: 3 } })
+    await b.como(gestao, `select public.confirmar_pagamento($1, 12.90)`, [r3.acerto_id])
+    expect(await b.admin(`select 1 from public.comissoes where loja_id = $1 and tipo = 'bonus_abertura'`, [lojaAna])).toHaveLength(1)
+  })
+
+  it('cada representante vê só as suas comissões; produção não vê nenhuma', async () => {
+    expect(await comissoes(ana)).toHaveLength(4)
+    expect(await comissoes(bia)).toHaveLength(1)
+    expect(await comissoes(producao)).toHaveLength(0)
+    expect(await comissoes(gestao)).toHaveLength(5)
+  })
+
+  it('representante não registra o próprio repasse', async () => {
+    const ids = (await b.admin(`select id from public.comissoes where representante_id = $1`, [repAna])).map((c) => c.id)
+    await expect(b.como(ana, `select public.registrar_repasse($1, $2, $3::uuid[])`, [uuid(), repAna, ids])).rejects.toThrow(/Só a gestão/)
+  })
+
+  it('repasse não mistura comissão de outro representante', async () => {
+    const ids = (await b.admin(`select id from public.comissoes`)).map((c) => c.id)
+    await expect(b.como(gestao, `select public.registrar_repasse($1, $2, $3::uuid[])`, [uuid(), repAna, ids])).rejects.toThrow(/de outro representante/)
+    expect(await b.admin(`select 1 from public.repasses`)).toHaveLength(0)
+  })
+
+  it('gestão paga um grupo de comissões: soma, marca como pagas e não paga duas vezes', async () => {
+    const todas = await b.admin(`select id from public.comissoes where representante_id = $1 order by criado_em, tipo`, [repAna])
+    const grupo = todas.slice(0, 3).map((c) => c.id) // 21,27 + 3,87 + 30,00
+    const id = uuid()
+    const args = [id, repAna, grupo, `repasses/${id}/pix.jpg`]
+    const [{ r }] = await b.como(gestao, `select public.registrar_repasse($1, $2, $3::uuid[], null, $4) as r`, args)
+    expect(Number(r.valor_total)).toBe(55.14)
+
+    const [{ r: deNovo }] = await b.como(gestao, `select public.registrar_repasse($1, $2, $3::uuid[], null, $4) as r`, args)
+    expect(deNovo.repetida).toBe(true)
+    await expect(b.como(gestao, `select public.registrar_repasse($1, $2, $3::uuid[])`, [uuid(), repAna, grupo])).rejects.toThrow(/já foi paga/)
+
+    expect(await b.admin(`select status, count(*)::int as n from public.comissoes where representante_id = $1 group by status order by status`, [repAna]))
+      .toEqual([{ status: 'pendente', n: 1 }, { status: 'paga', n: 3 }])
+    expect(await b.como(ana, `select valor_total::float as valor, comprovante_path from public.repasses`))
+      .toEqual([{ valor: 55.14, comprovante_path: `repasses/${id}/pix.jpg` }])
+    expect(await b.como(bia, `select 1 from public.repasses`)).toHaveLength(0)
+  })
+
+  it('comissão corrigida no mesmo dia: vale a lançada por último', async () => {
+    await b.como(gestao, `insert into public.representante_condicoes (representante_id, comissao_direta) values ($1, 0.10)`, [repBia])
+    await b.como(gestao, `insert into public.representante_condicoes (representante_id, comissao_direta) values ($1, 0.20)`, [repBia])
+    await b.como(gestao, `select public.registrar_retirada($1, $2, $3::jsonb)`, [uuid(), repBia, qtds({ 'MIX-100': 10 })])
+    const r = await visita(bia, lojaBia, { 'MIX-100': { reposto: 10 } })
+    await b.como(gestao, `select public.confirmar_pagamento($1, 119.00)`, [r.acerto_id])
+    const [c] = await b.admin(`select valor::float, percentual::float from public.comissoes where acerto_id = $1 and tipo = 'comissao'`, [r.acerto_id])
+    expect(c).toEqual({ valor: 23.8, percentual: 0.2 })
+  })
+
+  it('ninguém altera comissão por fora das funções', async () => {
+    await expect(b.como(gestao, `update public.comissoes set valor = 1`)).rejects.toThrow(/permission denied/)
+    await expect(b.como(ana, `update public.comissoes set status = 'paga'`)).rejects.toThrow(/permission denied/)
+  })
+})
+
+describe('fotos e comprovantes', () => {
+  const enviar = (uid: string, bucket: string, nome: string) =>
+    b.como(uid, `insert into storage.objects (bucket_id, name) values ($1, $2)`, [bucket, nome])
+  const ler = (uid: string) => b.como<{ name: string }>(uid, `select name from storage.objects order by name`)
+
+  it('representante envia foto e comprovante só do que é seu', async () => {
+    const [acertoAna] = await b.admin(`select id from public.acertos where loja_id = $1 limit 1`, [lojaAna])
+    await enviar(ana, 'fotos', `lojas/${lojaAna}/fachada.jpg`)
+    await enviar(ana, 'fotos', `representantes/${repAna}/perfil.jpg`)
+    await enviar(ana, 'comprovantes', `acertos/${acertoAna.id}/pix.jpg`)
+    await expect(enviar(ana, 'fotos', `lojas/${lojaBia}/fachada.jpg`)).rejects.toThrow(/row-level security/)
+    await expect(enviar(ana, 'fotos', `representantes/${repBia}/perfil.jpg`)).rejects.toThrow(/row-level security/)
+    await expect(enviar(bia, 'comprovantes', `acertos/${acertoAna.id}/pix.jpg`)).rejects.toThrow(/row-level security/)
+    await expect(enviar(ana, 'comprovantes', `repasses/${uuid()}/pix.jpg`)).rejects.toThrow(/row-level security/)
+    await expect(enviar(ana, 'fotos', `qualquer/coisa.jpg`)).rejects.toThrow(/row-level security/)
+    await expect(enviar(inativo, 'fotos', `representantes/${repAna}/x.jpg`)).rejects.toThrow(/row-level security/)
+
+    const caminho = `acertos/${acertoAna.id}/pix.jpg`
+    await expect(b.como(bia, `select public.anexar_comprovante_acerto($1, $2)`, [acertoAna.id, caminho])).rejects.toThrow(/não encontrado/)
+    await b.como(gestao, `select public.anexar_comprovante_acerto($1, $2)`, [acertoAna.id, caminho])
+    const [a] = await b.admin(`select comprovante_path from public.acertos where id = $1`, [acertoAna.id])
+    expect(a.comprovante_path).toBe(caminho)
+  })
+
+  it('cada um lê só os arquivos do que enxerga', async () => {
+    expect(await ler(ana)).toHaveLength(3)
+    // A outra representante vê a foto de perfil da colega, mas não a loja nem o comprovante.
+    expect((await ler(bia)).map((o) => o.name)).toEqual([`representantes/${repAna}/perfil.jpg`])
+    expect(await ler(gestao)).toHaveLength(3)
+    expect(await ler(inativo)).toHaveLength(0)
   })
 })

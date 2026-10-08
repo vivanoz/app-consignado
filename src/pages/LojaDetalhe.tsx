@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom'
+import { EnviarArquivo, Foto } from '../components/arquivos'
 import { Aviso, Botao, BotaoLink, Cartao, Carregando, Etiqueta, Rotulo, SaldoPorProduto, Titulo, Vazio } from '../components/ui'
-import { useAcertos, useEstornarVisita, useLoja, useProdutos, useRepresentantes, useSaldosLoja, useVisitas } from '../lib/api'
+import { useAcertos, useEstornarVisita, useLoja, useSalvarLoja, useProdutos, useRepresentantes, useSaldosLoja, useVisitas } from '../lib/api'
 import { useAcesso } from '../lib/auth'
 import { NOME_MODALIDADE, data, dataHora, reais } from '../lib/formato'
 
@@ -14,6 +15,7 @@ export function LojaDetalhe() {
   const acertos = useAcertos()
   const representantes = useRepresentantes()
   const estornar = useEstornarVisita()
+  const salvarLoja = useSalvarLoja()
 
   if (loja.isPending || produtos.isPending) return <Carregando />
   if (loja.error) return <Aviso erro={loja.error} />
@@ -38,6 +40,7 @@ export function LojaDetalhe() {
 
   return (
     <div className="space-y-4">
+      {l.foto_path && <Foto caminho={l.foto_path} nome={l.nome} formato="capa" className="aspect-[16/9] w-full" />}
       <Titulo
         apoio={[[l.endereco, l.numero].filter(Boolean).join(', '), l.complemento, l.bairro, `${l.cidade}/${l.uf}`].filter(Boolean).join(' · ')}
       >
@@ -96,7 +99,7 @@ export function LojaDetalhe() {
                   <Etiqueta tom="alerta">Estornada</Etiqueta>
                 ) : acerto ? (
                   <Etiqueta tom={acerto.status === 'confirmado' ? 'verde' : 'ouro'}>
-                    {reais(acerto.valor_total)} · {acerto.status === 'confirmado' ? 'pago' : 'pendente'}
+                    {reais(acerto.valor_total)} · {acerto.status === 'confirmado' ? 'pago' : acerto.status === 'cancelado' ? 'cancelado' : 'pendente'}
                   </Etiqueta>
                 ) : (
                   <Etiqueta>Sem venda</Etiqueta>
@@ -129,6 +132,7 @@ export function LojaDetalhe() {
                   ))}
                 </tbody>
               </table>
+              {v.foto_path && <Foto caminho={v.foto_path} nome="Foto da visita" formato="quadrada" className="mt-3 aspect-[4/3] w-full" />}
               {v.observacoes && <p className="mt-2 text-sm text-marrom/75">{v.observacoes}</p>}
               {v.estorno_motivo && <p className="mt-2 text-sm text-alerta">Estorno: {v.estorno_motivo}</p>}
               {ehGestao && ultimaValida?.id === v.id && acerto?.status !== 'confirmado' && (
@@ -144,9 +148,14 @@ export function LojaDetalhe() {
       </section>
 
       {(ehGestao || l.representante_id === meuRepresentanteId) && (
-        <BotaoLink para={`/lojas/${l.id}/editar`} variante="secundario" cheio>
-          Editar cadastro
-        </BotaoLink>
+        <div className="space-y-3">
+          <EnviarArquivo espaco="fotos" pasta="lojas" id={l.id} aoEnviar={(path) => salvarLoja.mutateAsync({ id: l.id, foto_path: path })}>
+            {l.foto_path ? 'Trocar foto da loja' : 'Adicionar foto da loja'}
+          </EnviarArquivo>
+          <BotaoLink para={`/lojas/${l.id}/editar`} variante="secundario" cheio>
+            Editar cadastro
+          </BotaoLink>
+        </div>
       )}
     </div>
   )
