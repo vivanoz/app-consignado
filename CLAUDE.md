@@ -16,6 +16,7 @@ App de controle da operação em consignação da Viva Noz: estoque com represen
 - Venda varejo (na rua) baixa o estoque de quem vendeu, fatura pelo preço médio de varejo da tabela e abre acerto: o dinheiro está com quem vendeu até a gestão confirmar.
 - Amostra só vai para potencial cliente (`prospectos`): sai do estoque, sem acerto nem comissão.
 - Matéria-prima: produção desconta insumos pela receita do produto e pelo destino do lote (loja ou varejo). Abaixo de 30% do estoque ideal, sinaliza compra. Valores de compra e fornecedores são só da gestão.
+- DRE (competência) e fluxo de caixa (caixa) saem da função `financeiro_mensal`, só para a gestão. Custo do pacote = receita x custo médio das compras de cada insumo. Despesas, impostos, aportes e retiradas ficam em `lancamentos`.
 - Antes de mostrar algo novo, decidir o que cada perfil vê. Representante tem visão operacional: suas lojas, potenciais, estoque, visitas, vendas e comissões. Nada de custo, compra, fornecedor, receita ou dado de outro representante.
 - Em função do banco, comparação com `app.meu_representante_id()` dentro de `if not (...)` precisa de `coalesce(..., false)`: quem não tem cadastro de representante devolve nulo e o `if` não barra.
 - Texto de interface em português, na voz da marca: frases curtas, ponto final, sem exclamação.

@@ -33,6 +33,7 @@ Qualquer pessoa cria a conta em **Primeiro acesso**, mas ela nasce bloqueada e n
 - Venda varejo baixa o estoque de quem vendeu e fatura pelo preço médio de varejo; a comissão sai quando a gestão confirma que o dinheiro chegou.
 - Amostra entregue a potencial cliente sai do estoque sem gerar cobrança.
 - Produção desconta as matérias-primas pela receita de cada produto; abaixo de 30% do estoque ideal, o app sinaliza compra.
+- A gestão tem DRE mês a mês (pela data da venda) e fluxo de caixa (pela data em que o dinheiro entrou ou saiu), com o custo do pacote calculado pelas compras.
 
 ## Rodar no computador
 
@@ -71,4 +72,4 @@ Roda os testes, compila e envia para o GitHub Pages: https://vivanoz.github.io/a
 
 ## Fora desta versão
 
-Contagem mensal do estoque do representante com desconto, pagamento parcial de acerto, custo e margem por produto a partir das compras, e-mails próprios (exigem serviço de envio).
+Contagem mensal do estoque do representante com desconto, pagamento parcial de acerto, e-mails próprios (exigem serviço de envio).

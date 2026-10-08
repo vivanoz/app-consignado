@@ -663,3 +663,73 @@ describe('produtos que a loja trabalha', () => {
     expect(await b.admin(`select 1 from public.loja_produtos_fora`)).toHaveLength(0)
   })
 })
+
+describe('DRE e fluxo de caixa', () => {
+  const financeiro = async () => (await b.como<{ r: any }>(gestao, `select public.financeiro_mensal(3) as r`))[0].r
+  const n = (v: unknown) => Number(v)
+
+  it('só a gestão vê o financeiro, os custos e os lançamentos', async () => {
+    await expect(b.como(ana, `select public.financeiro_mensal(3)`)).rejects.toThrow(/Só a gestão/)
+    await expect(b.como(producao, `select public.financeiro_mensal(3)`)).rejects.toThrow(/Só a gestão/)
+    expect(await b.como(ana, `select * from public.insumos_custo`)).toHaveLength(0)
+    expect(await b.como(producao, `select * from public.insumos_custo`)).toHaveLength(0)
+    await expect(b.como(ana, `insert into public.lancamentos (tipo, categoria, valor, competencia) values ('despesa', 'X', 10, app.hoje())`)).rejects.toThrow(/row-level security/)
+    expect(await b.como(ana, `select * from public.lancamentos`)).toHaveLength(0)
+  })
+
+  it('custo do insumo é o que foi pago, com frete rateado, dividido pelo que foi comprado', async () => {
+    // Compra do teste de matérias-primas: 5 kg de caju por R$ 300, 300 embalagens por R$ 120, frete de R$ 30.
+    const custos = Object.fromEntries(
+      (await b.como(gestao, `select i.nome, c.custo_unitario::float as custo from public.insumos_custo c join public.insumos i on i.id = c.insumo_id`)).map((c) => [c.nome, c.custo]),
+    )
+    expect(custos['Castanha de caju torrada sem sal W1']).toBeCloseTo((300 + 30 * (300 / 420)) / 5000, 6)
+    expect(custos['Embalagem kraft 100 g']).toBeCloseTo((120 + 30 * (120 / 420)) / 300, 6)
+  })
+
+  it('DRE do mês bate com as vendas, e o caixa com o que entrou e saiu', async () => {
+    const [esperado] = await b.admin(`select
+      (select coalesce(sum(valor_total), 0) from public.acertos where status <> 'cancelado')::float as receita,
+      (select coalesce(sum(valor), 0) from public.pagamentos)::float as recebido,
+      (select coalesce(sum(valor), 0) from public.comissoes)::float as comissoes,
+      (select coalesce(sum(valor_total), 0) from public.repasses)::float as repasses,
+      (select coalesce(sum(valor_total), 0) from public.compras)::float as compras,
+      (select coalesce(sum(valor_total), 0) from public.acertos where status = 'pendente')::float as a_receber`)
+    const r = await financeiro()
+    expect(r.meses).toHaveLength(3)
+    const mes = r.meses[2] // mês corrente: todos os testes rodam hoje
+    expect(n(mes.receita_lojas) + n(mes.receita_direta) + n(mes.receita_varejo)).toBeCloseTo(esperado.receita, 2)
+    expect(n(mes.receita_varejo)).toBeGreaterThan(0)
+    expect(n(mes.cx_lojas) + n(mes.cx_varejo)).toBeCloseTo(esperado.recebido, 2)
+    expect(n(mes.comissoes)).toBeCloseTo(esperado.comissoes, 2)
+    expect(n(mes.cx_repasses)).toBeCloseTo(esperado.repasses, 2)
+    expect(n(mes.cx_compras)).toBeCloseTo(esperado.compras, 2)
+    expect(n(r.a_receber)).toBeCloseTo(esperado.a_receber, 2)
+    // Há custo de caju e de embalagem, então o Mix vendido tem custo.
+    expect(n(mes.cmv)).toBeGreaterThan(0)
+    expect(n(mes.amostras_pacotes)).toBe(2)
+    // Meses anteriores, sem movimento.
+    expect(n(r.meses[0].receita_lojas) + n(r.meses[0].cx_compras)).toBe(0)
+    expect(n(r.saldo_anterior)).toBe(0)
+  })
+
+  it('despesa entra no DRE pela competência e no caixa só quando é paga; cancelada sai dos dois', async () => {
+    const antes = (await financeiro()).meses[2]
+    const [{ id }] = await b.como(gestao, `insert into public.lancamentos (tipo, categoria, valor, competencia) values ('despesa', 'Transporte', 80, app.hoje()) returning id`)
+    await b.como(gestao, `insert into public.lancamentos (tipo, categoria, valor, competencia, pago_em) values ('aporte', 'Aporte dos sócios', 500, app.hoje(), app.hoje())`)
+    let r = await financeiro()
+    expect(n(r.meses[2].despesas.Transporte)).toBe(80)
+    expect(n(r.meses[2].cx_despesas)).toBe(n(antes.cx_despesas))
+    expect(n(r.meses[2].cx_aportes)).toBe(n(antes.cx_aportes) + 500)
+    expect(n(r.a_pagar_despesas)).toBe(80)
+
+    await b.como(gestao, `update public.lancamentos set pago_em = app.hoje() where id = $1`, [id])
+    r = await financeiro()
+    expect(n(r.meses[2].cx_despesas)).toBe(n(antes.cx_despesas) + 80)
+
+    await b.como(gestao, `update public.lancamentos set cancelado_em = now() where id = $1`, [id])
+    r = await financeiro()
+    expect(r.meses[2].despesas.Transporte).toBeUndefined()
+    expect(n(r.meses[2].cx_despesas)).toBe(n(antes.cx_despesas))
+    await expect(b.admin(`delete from public.lancamentos`)).rejects.toThrow(/não podem ser alterados/)
+  })
+})

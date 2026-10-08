@@ -264,3 +264,16 @@ export interface Compra {
   observacoes: string | null
   compra_itens: { insumo_id: string; quantidade: number; valor: number }[]
 }
+
+export type LancamentoTipo = 'despesa' | 'imposto' | 'aporte' | 'retirada'
+
+export interface Lancamento {
+  id: string
+  tipo: LancamentoTipo
+  categoria: string
+  descricao: string | null
+  valor: number
+  competencia: string
+  pago_em: string | null
+  cancelado_em: string | null
+}

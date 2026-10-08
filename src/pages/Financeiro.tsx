@@ -18,6 +18,7 @@ import { enviarArquivo } from '../lib/arquivos'
 import { useAcesso } from '../lib/auth'
 import { NOME_MODALIDADE, data, hoje, porcento, reais } from '../lib/formato'
 import type { Acerto, AcertoStatus, Comissao, Representante } from '../lib/tipos'
+import { Resultado } from './Resultado'
 
 const soma = (valores: number[]) => valores.reduce((s, v) => s + Number(v), 0)
 
@@ -43,7 +44,7 @@ function Abas<T extends string>({ abas, atual, aoMudar }: { abas: { id: T; nome:
 //   Comissões: o que a Viva Noz deve a cada representante e o que já pagou.
 export function Financeiro() {
   const { ehGestao } = useAcesso()
-  const [area, setArea] = useState<'lojas' | 'comissoes'>('lojas')
+  const [area, setArea] = useState<'lojas' | 'comissoes' | 'resultado'>('lojas')
 
   return (
     <div className="space-y-4">
@@ -51,12 +52,14 @@ export function Financeiro() {
       <Abas
         abas={[
           { id: 'lojas', nome: 'A receber' },
-          { id: 'comissoes', nome: ehGestao ? 'Pagar representantes' : 'Você recebe' },
+          { id: 'comissoes', nome: ehGestao ? 'Comissões' : 'Você recebe' },
+          // DRE e fluxo de caixa: só a gestão.
+          ...(ehGestao ? [{ id: 'resultado' as const, nome: 'DRE e caixa' }] : []),
         ]}
         atual={area}
         aoMudar={setArea}
       />
-      {area === 'lojas' ? <AcertosDasLojas /> : ehGestao ? <ComissoesGestao /> : <MinhasComissoes />}
+      {area === 'lojas' ? <AcertosDasLojas /> : area === 'resultado' && ehGestao ? <Resultado /> : ehGestao ? <ComissoesGestao /> : <MinhasComissoes />}
     </div>
   )
 }

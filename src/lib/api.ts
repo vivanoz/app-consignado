@@ -11,6 +11,7 @@ import type {
   Compra,
   Fornecedor,
   Insumo,
+  Lancamento,
   Receita,
   Comissao,
   Condicao,
@@ -522,3 +523,51 @@ export const useAlternarProdutoDaLoja = () =>
       ? ler(supabase.from('loja_produtos_fora').delete().eq('loja_id', p.lojaId).eq('produto_id', p.produtoId))
       : ler(supabase.from('loja_produtos_fora').upsert({ loja_id: p.lojaId, produto_id: p.produtoId }, { ignoreDuplicates: true })),
   )
+
+// ── DRE e fluxo de caixa (só gestão) ──
+
+export interface MesFinanceiro {
+  mes: string
+  receita_lojas: number
+  receita_direta: number
+  receita_varejo: number
+  pacotes: number
+  cmv: number
+  impostos: number
+  comissoes: number
+  amostras: number
+  amostras_pacotes: number
+  perdas: number
+  despesas: Record<string, number>
+  cx_lojas: number
+  cx_varejo: number
+  cx_aportes: number
+  cx_compras: number
+  cx_repasses: number
+  cx_despesas: number
+  cx_impostos: number
+  cx_retiradas: number
+}
+
+export interface Financeiro {
+  meses: MesFinanceiro[]
+  saldo_anterior: number
+  a_receber: number
+  a_pagar_comissoes: number
+  a_pagar_despesas: number
+  custos: { produto_id: string; custo_loja: number; custo_varejo: number; insumos_sem_custo: number }[]
+}
+
+export const useFinanceiro = (meses: number) =>
+  useQuery({
+    queryKey: ['financeiro', meses],
+    queryFn: () => chamar<Financeiro>('financeiro_mensal', { p_meses: meses }),
+  })
+
+export const useLancamentos = () =>
+  useQuery({
+    queryKey: ['lancamentos'],
+    queryFn: () => ler<Lancamento[]>(supabase.from('lancamentos').select('*').order('competencia', { ascending: false }).limit(300)),
+  })
+
+export const useSalvarLancamento = () => useEscrita(salvarEm<Lancamento>('lancamentos'))
