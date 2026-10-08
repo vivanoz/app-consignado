@@ -16,7 +16,7 @@ const MENU: { para: string; nome: string; papeis: Papel[] }[] = [
 ]
 
 export function Layout() {
-  const { papel, perfil, meuRepresentanteId } = useAcesso()
+  const { papel, perfil, meuRepresentanteId, visaoDe, verComo } = useAcesso()
   const representantes = useRepresentantes()
   const itens = MENU.filter((m) => papel && m.papeis.includes(papel))
   const eu = representantes.data?.find((r) => r.id === meuRepresentanteId)
@@ -34,6 +34,17 @@ export function Layout() {
           <Foto caminho={eu?.foto_path} nome={perfil?.nome ?? ''} className="size-9 text-sm" />
         </NavLink>
       </header>
+
+      {visaoDe && (
+        <div className="flex items-center justify-between gap-3 bg-ouro px-4 py-2 text-sm text-profundo">
+          <p>
+            Você está vendo como <strong>{visaoDe.nome}</strong>. O que gravar aqui vale de verdade.
+          </p>
+          <button type="button" onClick={() => verComo(null)} className="min-h-9 shrink-0 rounded-lg bg-profundo px-3 font-semibold text-creme">
+            Voltar à gestão
+          </button>
+        </div>
+      )}
 
       <main className="flex-1 px-4 pt-5 pb-28">
         <Outlet />

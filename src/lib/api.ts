@@ -2,6 +2,7 @@
 // filtra pelo perfil de quem está logado); a escrita de estoque, visita e
 // pagamento passa sempre pelas funções do banco.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAcesso } from './auth'
 import { supabase } from './supabase'
 import type {
   Acerto,
@@ -28,6 +29,10 @@ async function ler<T>(consulta: PromiseLike<{ data: unknown; error: unknown }>):
   return data as T
 }
 
+// Quando a gestão está vendo o app como um representante, as consultas
+// trazem só o que é dele, como o banco faria para o login dele.
+const useEscopo = () => useAcesso().visaoDe?.id ?? null
+
 export const useProdutos = () =>
   useQuery({
     queryKey: ['produtos'],
@@ -42,11 +47,16 @@ export const usePrecos = (ativo = true) =>
     queryFn: () => ler<Preco[]>(supabase.from('precos').select('*').order('vigente_desde', { ascending: false })),
   })
 
-export const useRepresentantes = () =>
-  useQuery({
-    queryKey: ['representantes'],
-    queryFn: () => ler<Representante[]>(supabase.from('representantes').select('*').order('nome')),
+export const useRepresentantes = () => {
+  const escopo = useEscopo()
+  return useQuery({
+    queryKey: ['representantes', escopo],
+    queryFn: () => {
+      const consulta = supabase.from('representantes').select('*')
+      return ler<Representante[]>((escopo ? consulta.eq('id', escopo) : consulta).order('nome'))
+    },
   })
+}
 
 export const usePerfis = () =>
   useQuery({
@@ -54,12 +64,17 @@ export const usePerfis = () =>
     queryFn: () => ler<Perfil[]>(supabase.from('perfis').select('*').order('nome')),
   })
 
-export const useLojas = (ativo = true) =>
-  useQuery({
-    queryKey: ['lojas'],
+export const useLojas = (ativo = true) => {
+  const escopo = useEscopo()
+  return useQuery({
+    queryKey: ['lojas', 'lista', escopo],
     enabled: ativo,
-    queryFn: () => ler<Loja[]>(supabase.from('lojas').select('*').order('nome')),
+    queryFn: () => {
+      const consulta = supabase.from('lojas').select('*')
+      return ler<Loja[]>((escopo ? consulta.eq('representante_id', escopo) : consulta).order('nome'))
+    },
   })
+}
 
 export const useLoja = (id: string | undefined) =>
   useQuery({
@@ -75,11 +90,16 @@ export const useSaldosLoja = (ativo = true) =>
     queryFn: () => ler<SaldoLoja[]>(supabase.from('saldos_loja').select('*')),
   })
 
-export const useSaldosRepresentante = () =>
-  useQuery({
-    queryKey: ['saldos-representante'],
-    queryFn: () => ler<SaldoRepresentante[]>(supabase.from('saldos_representante').select('*')),
+export const useSaldosRepresentante = () => {
+  const escopo = useEscopo()
+  return useQuery({
+    queryKey: ['saldos-representante', escopo],
+    queryFn: () => {
+      const consulta = supabase.from('saldos_representante').select('*')
+      return ler<SaldoRepresentante[]>(escopo ? consulta.eq('representante_id', escopo) : consulta)
+    },
   })
+}
 
 export const useVisitas = (lojaId: string | undefined) =>
   useQuery({
@@ -96,22 +116,22 @@ export const useVisitas = (lojaId: string | undefined) =>
       ),
   })
 
-export const useAcertos = (ativo = true) =>
-  useQuery({
-    queryKey: ['acertos'],
+export const useAcertos = (ativo = true) => {
+  const escopo = useEscopo()
+  return useQuery({
+    queryKey: ['acertos', escopo],
     enabled: ativo,
-    queryFn: () =>
-      ler<Acerto[]>(
-        supabase
-          .from('acertos')
-          .select('*, acerto_itens(*), pagamentos(recebido_em, valor)')
-          .order('criado_em', { ascending: false })
-          .limit(300),
+    queryFn: () => {
+      const consulta = supabase.from('acertos').select('*, acerto_itens(*), pagamentos(recebido_em, valor)')
+      return ler<Acerto[]>(
+        (escopo ? consulta.eq('representante_id', escopo) : consulta).order('criado_em', { ascending: false }).limit(300),
       ).then((acertos) =>
         // pagamentos é 1:1 com acerto; o Supabase devolve objeto ou nulo.
         acertos.map((a) => ({ ...a, pagamentos: [a.pagamentos ?? []].flat() })),
-      ),
+      )
+    },
   })
+}
 
 export const useMovimentacoes = (representanteId: string | null | undefined) =>
   useQuery({
@@ -214,19 +234,29 @@ export const useUltimasVisitas = (ativo = true) =>
     queryFn: () => ler<UltimaVisita[]>(supabase.from('lojas_ultima_visita').select('*')),
   })
 
-export const useComissoes = (ativo = true) =>
-  useQuery({
-    queryKey: ['comissoes'],
+export const useComissoes = (ativo = true) => {
+  const escopo = useEscopo()
+  return useQuery({
+    queryKey: ['comissoes', escopo],
     enabled: ativo,
-    queryFn: () => ler<Comissao[]>(supabase.from('comissoes').select('*').order('vencimento').limit(1000)),
+    queryFn: () => {
+      const consulta = supabase.from('comissoes').select('*')
+      return ler<Comissao[]>((escopo ? consulta.eq('representante_id', escopo) : consulta).order('vencimento').limit(1000))
+    },
   })
+}
 
-export const useRepasses = (ativo = true) =>
-  useQuery({
-    queryKey: ['repasses'],
+export const useRepasses = (ativo = true) => {
+  const escopo = useEscopo()
+  return useQuery({
+    queryKey: ['repasses', escopo],
     enabled: ativo,
-    queryFn: () => ler<Repasse[]>(supabase.from('repasses').select('*').order('pago_em', { ascending: false }).limit(200)),
+    queryFn: () => {
+      const consulta = supabase.from('repasses').select('*')
+      return ler<Repasse[]>((escopo ? consulta.eq('representante_id', escopo) : consulta).order('pago_em', { ascending: false }).limit(200))
+    },
   })
+}
 
 export const useCondicoes = (ativo = true) =>
   useQuery({
@@ -272,6 +302,8 @@ export interface NovoUsuario {
   papel: string
   telefone: string
   faz_visitas: boolean
+  // Liga o login a um representante já cadastrado, em vez de criar outro.
+  representante_id?: string
   comissao_consignado: number
   comissao_direta: number
   bonus_abertura: number

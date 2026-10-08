@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { EnviarArquivo, Foto } from '../components/arquivos'
 import { Aviso, Botao, Campo, Cartao, Carregando, Etiqueta, Rotulo, Selecao, Titulo } from '../components/ui'
 import {
@@ -29,12 +30,14 @@ export function Equipe() {
   const perfis = usePerfis()
   const representantes = useRepresentantes()
   const condicoes = useCondicoes()
-  const [criando, setCriando] = useState(false)
+  // false: fechado; true: pessoa nova; representante: criar o login de quem já está cadastrado.
+  const [criando, setCriando] = useState<boolean | Representante>(false)
 
   if (perfis.isPending || representantes.isPending) return <Carregando />
 
   const aguardando = perfis.data?.filter((p) => !p.ativo) ?? []
   const ativos = perfis.data?.filter((p) => p.ativo) ?? []
+  const semAcesso = representantes.data?.filter((r) => !r.perfil_id) ?? []
 
   const cartao = (p: Perfil) => {
     const rep = representantes.data?.find((r) => r.perfil_id === p.id)
@@ -46,11 +49,21 @@ export function Equipe() {
       <Titulo apoio="Quem entra no app e o que cada pessoa enxerga.">Equipe</Titulo>
 
       {criando ? (
-        <NovoUsuario aoFechar={() => setCriando(false)} />
+        <NovoUsuario key={criando === true ? 'novo' : criando.id} representante={criando === true ? undefined : criando} aoFechar={() => setCriando(false)} />
       ) : (
         <Botao cheio onClick={() => setCriando(true)}>
           Cadastrar nova pessoa
         </Botao>
+      )}
+
+      {semAcesso.length > 0 && !criando && (
+        <section className="space-y-2.5">
+          <Rotulo>Representantes sem acesso ao app</Rotulo>
+          <p className="text-xs text-marrom/65">Estão cadastrados, mas ainda não têm login. Crie o acesso para eles entrarem.</p>
+          {semAcesso.map((r) => (
+            <SemLogin key={r.id} representante={r} condicao={condicoes.data?.find((c) => c.representante_id === r.id)} aoCriarAcesso={() => setCriando(r)} />
+          ))}
+        </section>
       )}
 
       {aguardando.length > 0 && (
@@ -78,12 +91,12 @@ export function Equipe() {
   )
 }
 
-function NovoUsuario({ aoFechar }: { aoFechar: () => void }) {
+function NovoUsuario({ aoFechar, representante }: { aoFechar: () => void; representante?: Representante }) {
   const criar = useCriarUsuario()
   const [form, setForm] = useState({
-    nome: '',
+    nome: representante?.nome ?? '',
     email: '',
-    telefone: '',
+    telefone: representante?.telefone ?? '',
     senha: gerarSenha(),
     papel: 'representante' as Papel,
     fazVisitas: false,
@@ -108,6 +121,7 @@ function NovoUsuario({ aoFechar }: { aoFechar: () => void }) {
       senha: form.senha,
       papel: form.papel,
       faz_visitas: visita,
+      representante_id: representante?.id,
       comissao_consignado: numero(form.consignado) / 100,
       comissao_direta: numero(form.direta) / 100,
       bonus_abertura: numero(form.bonus),
@@ -135,11 +149,13 @@ function NovoUsuario({ aoFechar }: { aoFechar: () => void }) {
 
   return (
     <Cartao>
-      <Rotulo>Nova pessoa</Rotulo>
+      <Rotulo>{representante ? `Acesso para ${representante.nome}` : 'Nova pessoa'}</Rotulo>
       <form onSubmit={enviar} className="mt-3 space-y-3">
         <Campo rotulo="Nome" required {...campo('nome')} />
         <Campo rotulo="E-mail (será o login)" type="email" required {...campo('email')} />
         <Campo rotulo="WhatsApp" type="tel" inputMode="tel" {...campo('telefone')} />
+        {representante && <p className="text-sm text-marrom/75">Entra com perfil de representante, já ligado ao cadastro e à comissão que existem.</p>}
+        {!representante && (
         <Selecao rotulo="Perfil" {...campo('papel')}>
           {(Object.keys(NOME_PAPEL) as Papel[]).map((papel) => (
             <option key={papel} value={papel}>
@@ -147,6 +163,7 @@ function NovoUsuario({ aoFechar }: { aoFechar: () => void }) {
             </option>
           ))}
         </Selecao>
+        )}
 
         {form.papel === 'gestao' && (
           <label className="flex items-center gap-3 text-sm font-semibold">
@@ -155,7 +172,7 @@ function NovoUsuario({ aoFechar }: { aoFechar: () => void }) {
           </label>
         )}
 
-        {visita && (
+        {visita && !representante && (
           <div className="rounded-xl bg-creme p-3">
             <p className="text-sm font-semibold">Comissão</p>
             <div className="mt-2 grid grid-cols-3 gap-2">
@@ -191,6 +208,7 @@ function Pessoa({ perfil, representante, condicao, souEu }: { perfil: Perfil; re
   const salvarRepresentante = useSalvarRepresentante()
   const salvarCondicao = useSalvarCondicao()
   const anexar = useAnexar()
+  const verApp = useVerApp()
   const [editando, setEditando] = useState(false)
   const [taxa, setTaxa] = useState({ consignado: '', direta: '', bonus: '' })
 
@@ -276,6 +294,11 @@ function Pessoa({ perfil, representante, condicao, souEu }: { perfil: Perfil; re
             </form>
           ) : (
             <div className="flex flex-wrap gap-x-5">
+              {!souEu && (
+                <Botao variante="discreto" onClick={() => verApp(representante)}>
+                  Ver o app como {representante.nome.split(' ')[0]}
+                </Botao>
+              )}
               <Botao variante="discreto" onClick={abrirComissao}>
                 Alterar comissão
               </Botao>
@@ -313,6 +336,42 @@ function Pessoa({ perfil, representante, condicao, souEu }: { perfil: Perfil; re
       )}
 
       <Aviso erro={erro} />
+    </Cartao>
+  )
+}
+
+// Abre o app como o representante vê: mesmas telas, só com os dados dele.
+function useVerApp() {
+  const { verComo } = useAcesso()
+  const navegar = useNavigate()
+  return (r: Representante) => {
+    verComo({ id: r.id, nome: r.nome })
+    navegar('/')
+  }
+}
+
+function SemLogin({ representante, condicao, aoCriarAcesso }: { representante: Representante; condicao?: Condicao; aoCriarAcesso: () => void }) {
+  const verApp = useVerApp()
+  return (
+    <Cartao>
+      <div className="flex items-center gap-3">
+        <Foto caminho={representante.foto_path} nome={representante.nome} className="size-12 shrink-0 text-base" />
+        <div className="min-w-0 flex-1">
+          <p className="font-bold">{representante.nome}</p>
+          <p className="truncate text-xs text-marrom/65">
+            {[representante.telefone, condicao && `${porcento(condicao.comissao_consignado)} consignado · ${porcento(condicao.comissao_direta)} direta`].filter(Boolean).join(' · ')}
+          </p>
+        </div>
+        <Etiqueta tom="ouro">Sem login</Etiqueta>
+      </div>
+      <div className="mt-3 space-y-2">
+        <Botao cheio onClick={aoCriarAcesso}>
+          Criar acesso ao app
+        </Botao>
+        <Botao variante="secundario" cheio onClick={() => verApp(representante)}>
+          Ver o app como {representante.nome.split(' ')[0]}
+        </Botao>
+      </div>
     </Cartao>
   )
 }

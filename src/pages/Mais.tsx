@@ -7,7 +7,7 @@ import { NOME_MODALIDADE, NOME_PAPEL, data, hoje, precoVigente, reais } from '..
 import { supabase } from '../lib/supabase'
 
 export function Mais() {
-  const { perfil, papel, ehGestao, meuRepresentanteId, sair } = useAcesso()
+  const { perfil, papel, ehGestao, meuRepresentanteId, visaoDe, sair } = useAcesso()
   const anexar = useAnexar()
   const [senha, setSenha] = useState('')
   const [recado, setRecado] = useState('')
@@ -46,7 +46,7 @@ export function Mais() {
           <div className="min-w-0">
             <p className="font-bold">{perfil?.nome}</p>
             <p className="truncate text-sm text-marrom/70">
-              {perfil?.email} · {papel && NOME_PAPEL[papel]}
+              {visaoDe ? 'visão de teste' : perfil?.email} · {papel && NOME_PAPEL[papel]}
             </p>
           </div>
         </div>
@@ -57,6 +57,9 @@ export function Mais() {
             </EnviarArquivo>
           </div>
         )}
+        {visaoDe ? (
+          <p className="mt-3 text-sm text-marrom/70">Na conta de {visaoDe.nome}, aqui fica a troca de senha.</p>
+        ) : (
         <form onSubmit={trocarSenha} className="mt-4 space-y-3">
           <Campo rotulo="Nova senha (mínimo de 8 caracteres)" type="password" autoComplete="new-password" minLength={8} required value={senha} onChange={(e) => setSenha(e.target.value)} />
           <Aviso erro={erro} />
@@ -65,6 +68,7 @@ export function Mais() {
             Trocar senha
           </Botao>
         </form>
+        )}
       </Cartao>
 
       <Botao variante="secundario" cheio onClick={sair}>

@@ -47,11 +47,19 @@ Deno.serve(async (req) => {
   const telefone = String(dados.telefone ?? '').trim() || null
   // Quem é da gestão e também faz visitas ganha um cadastro de representante.
   const fazVisitas = papel === 'representante' || dados.faz_visitas === true
+  // Representante já cadastrado, ainda sem login: o acesso é ligado a ele.
+  const existenteId = typeof dados.representante_id === 'string' && dados.representante_id ? dados.representante_id : null
 
   if (!nome) return responder({ erro: 'Informe o nome.' }, 400)
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return responder({ erro: 'E-mail inválido.' }, 400)
   if (senha.length < 8) return responder({ erro: 'A senha precisa de pelo menos 8 caracteres.' }, 400)
   if (!PAPEIS.includes(papel)) return responder({ erro: 'Perfil inválido.' }, 400)
+
+  if (existenteId) {
+    const { data: existente } = await admin.from('representantes').select('id, perfil_id').eq('id', existenteId).maybeSingle()
+    if (!existente) return responder({ erro: 'Representante não encontrado.' }, 400)
+    if (existente.perfil_id) return responder({ erro: 'Este representante já tem acesso ao app.' }, 400)
+  }
 
   const { data: criado, error: erroLogin } = await admin.auth.admin.createUser({
     email,
@@ -70,7 +78,11 @@ Deno.serve(async (req) => {
   if (erroPerfil) return responder({ erro: `Login criado, mas o perfil não foi liberado: ${erroPerfil.message}` }, 500)
 
   let representanteId: string | null = null
-  if (fazVisitas) {
+  if (existenteId) {
+    const { error: erroElo } = await admin.from('representantes').update({ perfil_id: id }).eq('id', existenteId).is('perfil_id', null)
+    if (erroElo) return responder({ erro: `Usuário criado, mas não foi ligado ao representante: ${erroElo.message}` }, 500)
+    representanteId = existenteId
+  } else if (fazVisitas) {
     const { data: rep, error: erroRep } = await admin
       .from('representantes')
       .insert({ nome, telefone, perfil_id: id, territorio: String(dados.territorio ?? '').trim() || null })

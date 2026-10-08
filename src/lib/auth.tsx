@@ -13,6 +13,10 @@ interface Acesso {
   papel: Papel | null
   ehGestao: boolean
   ehProducao: boolean
+  // Gestão vendo o app como um representante veria. A sessão continua sendo
+  // a da gestão: muda só o que as telas mostram.
+  visaoDe: { id: string; nome: string } | null
+  verComo: (representante: { id: string; nome: string } | null) => void
   precisaDefinirSenha: boolean
   senhaDefinida: () => void
   sair: () => Promise<void>
@@ -25,6 +29,7 @@ export function ProvedorDeAcesso({ children }: { children: ReactNode }) {
   const [sessao, setSessao] = useState<Session | null>(null)
   const [pronto, setPronto] = useState(false)
   const [precisaDefinirSenha, setPrecisaDefinirSenha] = useState(chegouPorLink)
+  const [visao, setVisao] = useState<{ id: string; nome: string } | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -55,19 +60,24 @@ export function ProvedorDeAcesso({ children }: { children: ReactNode }) {
   })
 
   const perfil = conta.data?.perfil ?? null
-  const papel = perfil?.ativo ? perfil.papel : null
+  const papelReal = perfil?.ativo ? perfil.papel : null
+  const visaoDe = papelReal === 'gestao' ? visao : null
+  const papel = visaoDe ? 'representante' : papelReal
 
   const valor: Acesso = {
     carregando: !pronto || (Boolean(uid) && conta.isPending),
     sessao,
-    perfil,
-    meuRepresentanteId: papel ? (conta.data?.representanteId ?? null) : null,
+    perfil: perfil && visaoDe ? { ...perfil, nome: visaoDe.nome } : perfil,
+    meuRepresentanteId: visaoDe ? visaoDe.id : papel ? (conta.data?.representanteId ?? null) : null,
     papel,
     ehGestao: papel === 'gestao',
     ehProducao: papel === 'producao',
+    visaoDe,
+    verComo: setVisao,
     precisaDefinirSenha,
     senhaDefinida: () => setPrecisaDefinirSenha(false),
     sair: async () => {
+      setVisao(null)
       await supabase.auth.signOut()
     },
   }
