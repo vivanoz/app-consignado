@@ -4,7 +4,7 @@ import { Carregando } from './components/ui'
 import { useAcesso } from './lib/auth'
 import { configurado } from './lib/supabase'
 import { Acertos } from './pages/Acertos'
-import { DefinirSenha, Entrar, SemAcesso, SemConfiguracao } from './pages/Entrada'
+import { DefinirSenha, Entrada, SemAcesso, SemConfiguracao } from './pages/Entrada'
 import { Estoque } from './pages/Estoque'
 import { Inicio } from './pages/Inicio'
 import { LojaDetalhe } from './pages/LojaDetalhe'
@@ -18,7 +18,7 @@ export function App() {
 
   if (!configurado) return <SemConfiguracao />
   if (carregando) return <Carregando />
-  if (!sessao) return <Entrar />
+  if (!sessao) return <Entrada />
   if (precisaDefinirSenha) return <DefinirSenha />
   if (!papel) return <SemAcesso />
 

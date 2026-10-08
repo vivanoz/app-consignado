@@ -8,6 +8,8 @@ export const configurado = Boolean(url && chave)
 // Convite e redefinição de senha chegam com o token no endereço. Guardamos
 // isso antes de o cliente do Supabase limpar a URL, para pedir a nova senha.
 export const chegouPorLink = /type=(invite|recovery)/.test(window.location.hash)
+// Link vencido ou já usado volta com o erro no endereço.
+export const erroDoLink = /error(_code|_description)?=/.test(window.location.hash + window.location.search)
 
 export const supabase = createClient(url ?? 'http://localhost', chave ?? 'sem-chave')
 

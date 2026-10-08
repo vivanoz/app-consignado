@@ -18,7 +18,7 @@ Controle da operação em consignação da Viva Noz: o que está com cada repres
 | Produção | Estoque dos representantes, retirada e devolução. Não vê lojas, preços nem acertos. |
 | Representante | Suas lojas, seu estoque, suas visitas e seus acertos. Não vê custos nem dados de outros representantes. |
 
-Todo usuário novo nasce bloqueado. A gestão escolhe o perfil e libera em **Mais > Equipe e acessos**.
+Qualquer pessoa cria a conta em **Primeiro acesso**, mas ela nasce bloqueada e não enxerga nada. A gestão escolhe o perfil e libera em **Mais > Equipe e acessos**.
 
 ### Regras que o banco garante
 
@@ -47,8 +47,8 @@ npm run dev
 1. Criar o projeto no Supabase com a conta da Viva Noz.
 2. `npx supabase login` e `npx supabase link --project-ref <ref do projeto>`.
 3. `npx supabase db push` aplica as migrações.
-4. No painel: Authentication > Sign In / Providers, desligar "Allow new users to sign up". Pessoas entram por convite.
-5. Convidar o primeiro usuário e torná-lo gestão no SQL Editor:
+4. `npx supabase config push` aplica a configuração de login (aceite só a parte de auth).
+5. A primeira pessoa cria a conta no app ("Primeiro acesso") e vira gestão pelo SQL Editor:
 
 ```sql
 update public.perfis set papel = 'gestao', ativo = true where email = 'email-da-pessoa';

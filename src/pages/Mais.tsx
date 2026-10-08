@@ -222,7 +222,7 @@ export function Equipe() {
           </Cartao>
         ))}
         <p className="text-xs text-marrom/65">
-          Para incluir uma pessoa, convide o e-mail dela no painel do Supabase (Authentication, Users, Invite). Ela aparece aqui como "Aguardando" até você escolher o perfil e liberar.
+          Para incluir uma pessoa, peça que ela abra o app, toque em "Primeiro acesso" e crie a conta. Ela aparece aqui como "Aguardando" até você escolher o perfil e liberar. Só libere quem você reconhece.
         </p>
       </section>
 
