@@ -30,5 +30,6 @@ export default defineConfig({
       },
     }),
   ],
-  test: { include: ['tests/**/*.test.ts'] },
+  // Subir o Postgres em memória e aplicar todas as migrações leva alguns segundos.
+  test: { include: ['tests/**/*.test.ts'], hookTimeout: 60_000, testTimeout: 30_000 },
 })
