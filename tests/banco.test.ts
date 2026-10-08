@@ -172,6 +172,11 @@ describe('visitas e acertos', () => {
     await expect(visita(bia, lojaAna, { 'MIX-100': { encontrado: 7 } })).rejects.toThrow(/outro representante/)
   })
 
+  it('quem não tem cadastro de representante não registra visita', async () => {
+    await expect(visita(producao, lojaAna, { 'MIX-100': { encontrado: 7 } })).rejects.toThrow(/outro representante/)
+    await expect(b.como(producao, `select public.definir_foto_representante($1, $2)`, [repAna, `representantes/${repAna}/x.jpg`])).rejects.toThrow(/sua própria foto/)
+  })
+
   it('visita com erro não deixa rastro', async () => {
     expect(await b.admin(`select 1 from public.visitas where loja_id = $1`, [lojaAna])).toHaveLength(1)
     expect(await saldoLoja(lojaAna)).toEqual({ 'MIX-100': 7, 'CAR-100': 7, 'CAJU-100': 7 })
@@ -415,5 +420,132 @@ describe('fotos e comprovantes', () => {
     expect((await ler(bia)).map((o) => o.name)).toEqual([`representantes/${repAna}/perfil.jpg`])
     expect(await ler(gestao)).toHaveLength(3)
     expect(await ler(inativo)).toHaveLength(0)
+  })
+})
+
+describe('produção e venda varejo', () => {
+  const vender = (uid: string, rep: string, linhas: Record<string, number>, id = uuid()) =>
+    b.como<{ r: any }>(uid, `select public.registrar_venda_varejo($1, $2, $3::jsonb) as r`, [id, rep, qtds(linhas)]).then((x) => x[0].r)
+
+  it('produção registra o lote e o pacote entra na fábrica; representante não registra', async () => {
+    await expect(b.como(ana, `select public.registrar_producao($1, $2, 40)`, [uuid(), prod['MIX-100']])).rejects.toThrow(/gestão ou a produção/)
+    const [antes] = await b.admin(`select coalesce((select saldo from public.saldos_fabrica where produto_id = $1), 0) as saldo`, [prod['MIX-100']])
+    await b.como(producao, `select public.registrar_producao($1, $2, 40)`, [uuid(), prod['MIX-100']])
+    const [depois] = await b.admin(`select saldo from public.saldos_fabrica where produto_id = $1`, [prod['MIX-100']])
+    expect(depois.saldo - antes.saldo).toBe(40)
+    // Representante não enxerga a produção: nem os lotes, nem a movimentação de entrada na fábrica.
+    expect(await b.como(ana, `select * from public.lotes_producao`)).toHaveLength(0)
+    expect(await b.como(ana, `select * from public.movimentacoes where tipo = 'producao'`)).toHaveLength(0)
+  })
+
+  it('venda varejo baixa o estoque de quem vendeu e fatura pelo preço médio de R$ 15', async () => {
+    const antes = await saldoRep(repAna)
+    const id = uuid()
+    const r = await vender(ana, repAna, { 'MIX-100': 2, 'CAJU-100': 3 }, id)
+    expect(Number(r.valor_total)).toBe(75)
+    const depois = await saldoRep(repAna)
+    expect(depois['MIX-100']).toBe(antes['MIX-100'] - 2)
+    expect(depois['CAJU-100']).toBe(antes['CAJU-100'] - 3)
+    expect(depois['CAR-100']).toBe(antes['CAR-100'])
+
+    const repetida = await vender(ana, repAna, { 'MIX-100': 2, 'CAJU-100': 3 }, id)
+    expect(repetida.repetida).toBe(true)
+    expect(await saldoRep(repAna)).toEqual(depois)
+
+    const [a] = await b.admin(`select modalidade, loja_id, visita_id, status, valor_total::float as valor from public.acertos where id = $1`, [r.acerto_id])
+    expect(a).toEqual({ modalidade: 'varejo', loja_id: null, visita_id: null, status: 'pendente', valor: 75 })
+  })
+
+  it('não vende mais do que tem, nem em nome de outro representante', async () => {
+    await expect(vender(ana, repAna, { 'CAR-100': 99 })).rejects.toThrow(/o estoque no app é de \d+ e a venda é de 99/)
+    await expect(vender(ana, repBia, { 'MIX-100': 1 })).rejects.toThrow(/só registra as suas próprias vendas/)
+    await expect(vender(producao, repAna, { 'MIX-100': 1 })).rejects.toThrow(/só registra as suas próprias vendas/)
+  })
+
+  it('cada um vê só as próprias vendas; a gestão vê todas', async () => {
+    expect(await b.como(ana, `select 1 from public.vendas_varejo`)).toHaveLength(1)
+    expect(await b.como(bia, `select 1 from public.vendas_varejo`)).toHaveLength(0)
+    expect(await b.como(bia, `select 1 from public.acertos where modalidade = 'varejo'`)).toHaveLength(0)
+    expect(await b.como(gestao, `select 1 from public.vendas_varejo`)).toHaveLength(1)
+  })
+
+  it('dinheiro do varejo confirmado gera comissão de varejo, sem bônus de abertura', async () => {
+    const [a] = await b.admin(`select id from public.acertos where modalidade = 'varejo' and status = 'pendente'`)
+    await expect(b.como(ana, `select public.confirmar_pagamento($1, 75)`, [a.id])).rejects.toThrow(/Só a gestão/)
+    await b.como(gestao, `select public.confirmar_pagamento($1, 75)`, [a.id])
+    const linhas = await b.admin(`select tipo, valor::float, percentual::float, loja_id from public.comissoes where acerto_id = $1`, [a.id])
+    expect(linhas).toEqual([{ tipo: 'comissao', valor: 11.25, percentual: 0.15, loja_id: null }])
+  })
+
+  it('quem tem comissão zero vende no varejo sem gerar comissão', async () => {
+    await b.como(gestao, `insert into public.representante_condicoes (representante_id, comissao_consignado, comissao_direta, comissao_varejo, bonus_abertura) values ($1, 0, 0, 0, 0)`, [repBia])
+    await b.como(gestao, `select public.registrar_retirada($1, $2, $3::jsonb)`, [uuid(), repBia, qtds({ 'CAR-100': 4 })])
+    const r = await vender(gestao, repBia, { 'CAR-100': 4 })
+    await b.como(gestao, `select public.confirmar_pagamento($1, 60)`, [r.acerto_id])
+    expect(await b.admin(`select 1 from public.comissoes where acerto_id = $1`, [r.acerto_id])).toHaveLength(0)
+  })
+
+  it('estorno devolve o estoque e cancela o acerto; venda paga não se estorna', async () => {
+    const antes = await saldoRep(repAna)
+    const r = await vender(ana, repAna, { 'MIX-100': 1 })
+    await expect(b.como(ana, `select public.estornar_venda_varejo($1, 'errei')`, [r.venda_id])).rejects.toThrow(/Só a gestão/)
+    await b.como(gestao, `select public.estornar_venda_varejo($1, 'digitou errado')`, [r.venda_id])
+    expect(await saldoRep(repAna)).toEqual(antes)
+    const [a] = await b.admin(`select status from public.acertos where id = $1`, [r.acerto_id])
+    expect(a.status).toBe('cancelado')
+
+    const [paga] = await b.admin(`select venda_varejo_id as id from public.acertos where modalidade = 'varejo' and status = 'confirmado' limit 1`)
+    await expect(b.como(gestao, `select public.estornar_venda_varejo($1, 'teste')`, [paga.id])).rejects.toThrow(/já foi confirmado/)
+  })
+
+  it('loja não pode ser cadastrada como varejo', async () => {
+    await expect(b.como(gestao, `update public.lojas set modalidade = 'varejo' where id = $1`, [lojaBia])).rejects.toThrow(/lojas_sem_varejo/)
+  })
+})
+
+describe('potenciais clientes e amostras', () => {
+  let potencial: string
+  const amostra = (uid: string, prospecto: string, linhas: Record<string, number>, id = uuid()) =>
+    b.como<{ r: any }>(uid, `select public.registrar_amostra($1, $2, $3::jsonb) as r`, [id, prospecto, qtds(linhas)]).then((x) => x[0].r)
+
+  it('representante cadastra o seu potencial cliente; o outro não vê', async () => {
+    ;[{ id: potencial }] = await b.como(ana, `insert into public.prospectos (nome, representante_id) values ('Arena Nova', $1) returning id`, [repAna])
+    await expect(b.como(ana, `insert into public.prospectos (nome, representante_id) values ('De outra', $1)`, [repBia])).rejects.toThrow(/row-level security/)
+    expect(await b.como(bia, `select 1 from public.prospectos`)).toHaveLength(0)
+    expect(await b.como(producao, `select 1 from public.prospectos`)).toHaveLength(0)
+    expect(await b.como(gestao, `select 1 from public.prospectos`)).toHaveLength(1)
+  })
+
+  it('amostra sai do estoque de quem entregou, sem acerto nem comissão', async () => {
+    const antes = await saldoRep(repAna)
+    const [contagem] = await b.admin(`select (select count(*) from public.acertos)::int as acertos, (select count(*) from public.comissoes)::int as comissoes`)
+    const id = uuid()
+    const r = await amostra(ana, potencial, { 'MIX-100': 1, 'CAJU-100': 1 }, id)
+    expect(r.pacotes).toBe(2)
+    expect((await amostra(ana, potencial, { 'MIX-100': 1, 'CAJU-100': 1 }, id)).repetida).toBe(true)
+
+    const depois = await saldoRep(repAna)
+    expect(depois['MIX-100']).toBe(antes['MIX-100'] - 1)
+    expect(depois['CAJU-100']).toBe(antes['CAJU-100'] - 1)
+    expect(await b.admin(`select (select count(*) from public.acertos)::int as acertos, (select count(*) from public.comissoes)::int as comissoes`)).toEqual([contagem])
+
+    const [p] = await b.admin(`select status from public.prospectos where id = $1`, [potencial])
+    expect(p.status).toBe('em_conversa')
+    expect(await b.admin(`select origem, destino, tipo from public.movimentacoes where operacao_id = $1 limit 1`, [id]))
+      .toEqual([{ origem: 'representante', destino: 'amostra', tipo: 'amostra' }])
+  })
+
+  it('não entrega amostra sem estoque nem para potencial de outro representante', async () => {
+    await expect(amostra(ana, potencial, { 'CAR-100': 99 })).rejects.toThrow(/o estoque no app é de \d+ e a amostra é de 99/)
+    await expect(amostra(bia, potencial, { 'MIX-100': 1 })).rejects.toThrow(/outro representante/)
+    await expect(amostra(producao, potencial, { 'MIX-100': 1 })).rejects.toThrow(/outro representante/)
+    expect(await b.como(bia, `select 1 from public.amostras`)).toHaveLength(0)
+  })
+
+  it('representante não passa o potencial cliente para outro; a gestão passa', async () => {
+    await expect(b.como(ana, `update public.prospectos set representante_id = $2 where id = $1`, [potencial, repBia])).rejects.toThrow(/row-level security/)
+    await b.como(ana, `update public.prospectos set status = 'virou_loja', loja_id = $2 where id = $1`, [potencial, lojaAna])
+    await b.como(gestao, `update public.prospectos set representante_id = $2 where id = $1`, [potencial, repBia])
+    expect(await b.como(bia, `select 1 from public.prospectos`)).toHaveLength(1)
   })
 })
