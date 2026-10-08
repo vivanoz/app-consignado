@@ -2,8 +2,9 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { CampoSegmento } from '../components/Segmento'
 import { AreaDeTexto, Aviso, Botao, BotaoLink, Campo, Cartao, Carregando, Contador, Etiqueta, Rotulo, Selecao, Titulo, Vazio } from '../components/ui'
-import { useAmostras, useProdutos, useProspectos, useRegistrarAmostra, useRepresentantes, useSalvarProspecto, useSaldosRepresentante } from '../lib/api'
+import { useAmostras, useProdutos, useProspectos, useRegistrarAmostra, useRepresentantes, useSalvarProspecto } from '../lib/api'
 import { useAcesso } from '../lib/auth'
+import { useEstoqueDeQuemVende } from '../lib/estoque'
 import { NOME_PROSPECTO, data, hoje, pacotes } from '../lib/formato'
 import type { Prospecto, ProspectoStatus } from '../lib/tipos'
 
@@ -172,7 +173,6 @@ export function PotencialDetalhe() {
 function EntregarAmostra({ prospecto, aoFechar }: { prospecto: Prospecto; aoFechar: () => void }) {
   const { meuRepresentanteId } = useAcesso()
   const produtos = useProdutos()
-  const saldos = useSaldosRepresentante()
   const representantes = useRepresentantes()
   const registrar = useRegistrarAmostra()
   // Criado uma vez por entrega: reenviar não duplica.
@@ -184,11 +184,21 @@ function EntregarAmostra({ prospecto, aoFechar }: { prospecto: Prospecto; aoFech
   // O estoque que sai é o de quem cuida deste potencial cliente.
   const dono = prospecto.representante_id
   const quem = dono === meuRepresentanteId ? 'você tem' : `${representantes.data?.find((r) => r.id === dono)?.nome ?? 'representante'} tem`
-  const tem = (produtoId: string) => saldos.data?.find((s) => s.representante_id === dono && s.produto_id === produtoId)?.saldo ?? 0
+  const estoque = useEstoqueDeQuemVende(dono)
+  const tem = estoque.disponivel
   const total = Object.values(quantidades).reduce((s, n) => s + n, 0)
   const ativos = (produtos.data ?? []).filter((p) => p.ativo)
 
+  const [erroRetirada, setErroRetirada] = useState<unknown>(null)
+
   async function enviar() {
+    setErroRetirada(null)
+    const itens = Object.entries(quantidades).map(([produto_id, quantidade]) => ({ produto_id, quantidade }))
+    try {
+      await estoque.garantir(itens)
+    } catch (e) {
+      return setErroRetirada(e)
+    }
     await registrar.mutateAsync({
       id: amostraId,
       prospectoId: prospecto.id,
@@ -218,12 +228,13 @@ function EntregarAmostra({ prospecto, aoFechar }: { prospecto: Prospecto; aoFech
       </Cartao>
 
       {ativos.every((p) => tem(p.id) === 0) && (
-        <Aviso>Sem estoque no app para entregar amostra. Registre a retirada na fábrica em Estoque.</Aviso>
+        <Aviso>{estoque.direto ? 'Sem pacote pronto no app. Registre a produção em Estoque.' : 'Sem estoque no app para entregar amostra. Peça para registrarem a sua retirada na fábrica.'}</Aviso>
       )}
 
       <Campo rotulo="Dia da entrega" type="date" max={hoje()} value={entregueEm} onChange={(e) => setEntregueEm(e.target.value)} />
       <AreaDeTexto rotulo="Observações" valor={observacoes} aoMudar={setObservacoes} dica="Opcional. Com quem falou, o que achou." />
-      <Aviso erro={registrar.error} />
+      {estoque.direto && <p className="text-xs text-marrom/65">Conta o que está com você e o que está na fábrica.</p>}
+      <Aviso erro={erroRetirada ?? registrar.error} />
       <Botao cheio disabled={total === 0 || !entregueEm || registrar.isPending} onClick={enviar}>
         {registrar.isPending ? 'Gravando.' : `Gravar ${pacotes(total)} de amostra`}
       </Botao>

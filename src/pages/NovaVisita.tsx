@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { AreaDeTexto, Aviso, Botao, BotaoLink, Cartao, Carregando, Contador, Rotulo, Titulo, Vazio } from '../components/ui'
 import { useAnexar, useLoja, usePrecos, useProdutos, useProdutosFora, useRegistrarVisita, useRepresentantes, useSaldosLoja, useSaldosRepresentante } from '../lib/api'
 import { useAcesso } from '../lib/auth'
+import { useEstoqueDeQuemVende } from '../lib/estoque'
 import { hoje, linkWhatsApp, pacotes, precoVigente, reais, data } from '../lib/formato'
 import { enviarArquivo } from '../lib/arquivos'
 import type { ItemVisitaEnvio, ResultadoVisita } from '../lib/tipos'
@@ -57,6 +58,8 @@ export function NovaVisita() {
   }, [rascunho, lojaId, resultado])
 
   const l = loja.data
+  const estoque = useEstoqueDeQuemVende(l?.representante_id)
+  const [erroRetirada, setErroRetirada] = useState<unknown>(null)
   const direta = l?.modalidade === 'compra_direta'
 
   const linhas = useMemo(() => {
@@ -64,7 +67,8 @@ export function NovaVisita() {
     return produtos.data
       .map((p) => {
         const naLoja = saldosLoja.data.find((s) => s.loja_id === l.id && s.produto_id === p.id)?.saldo ?? 0
-        const comigo = saldosRep.data.find((s) => s.representante_id === l.representante_id && s.produto_id === p.id)?.saldo ?? 0
+        // Em mãos e, para quem é da gestão e também vende, o que está na fábrica.
+        const comigo = estoque.disponivel(p.id)
         // Sem contagem digitada, parte do saldo anterior (nada vendido).
         const padrao: Linha = { encontrado: direta ? 0 : naLoja, recolhido: 0, baixado: 0, reposto: 0 }
         const v: Linha = { ...padrao, ...rascunho.linhas[p.id] }
@@ -76,7 +80,7 @@ export function NovaVisita() {
       })
       // Fora de linha ou que a loja não compra: só aparece se ainda houver pacote lá para contar.
       .filter((x) => (x.produto.ativo && !fora.data?.some((f) => f.loja_id === l.id && f.produto_id === x.produto.id)) || x.naLoja > 0)
-  }, [l, produtos.data, saldosLoja.data, saldosRep.data, precos.data, rascunho.linhas, direta, fora.data])
+  }, [l, produtos.data, saldosLoja.data, saldosRep.data, precos.data, rascunho.linhas, direta, fora.data, estoque.versao])
 
   if (loja.isPending || produtos.isPending || saldosLoja.isPending || saldosRep.isPending) return <Carregando />
   if (!l) return <Vazio>Loja não encontrada.</Vazio>
@@ -107,6 +111,13 @@ export function NovaVisita() {
       reposto: x.reposto,
     }))
     const resumo = linhas.filter((x) => x.vendido > 0).map((x) => `${x.produto.nome}: ${x.vendido} x ${reais(x.preco ?? 0)}`)
+    setErroRetirada(null)
+    try {
+      // O que é recolhido nesta visita já conta como estoque em mãos.
+      await estoque.garantir(itens.map((i) => ({ produto_id: i.produto_id, quantidade: i.reposto - i.recolhido })))
+    } catch (e) {
+      return setErroRetirada(e)
+    }
     const r = await registrar.mutateAsync({ id: rascunho.id, lojaId, itens, observacoes: rascunho.observacoes })
     localStorage.removeItem(chave(lojaId))
     // A visita já está gravada; se a foto falhar, a visita continua valendo.
@@ -209,7 +220,7 @@ export function NovaVisita() {
           />
         </label>
         <p className="text-sm text-marrom/75">Depois de gravar, a visita não pode ser editada. Se houver erro, a gestão faz o estorno.</p>
-        <Aviso erro={registrar.error} />
+        <Aviso erro={erroRetirada ?? registrar.error} />
         <Botao cheio disabled={registrar.isPending} onClick={enviar}>
           {registrar.isPending ? 'Gravando.' : registrar.error ? 'Tentar de novo' : 'Gravar visita'}
         </Botao>
@@ -230,12 +241,12 @@ export function NovaVisita() {
         <Cartao className="border-alerta/40 bg-alerta/8">
           <p className="font-semibold">{dono} está sem estoque no app.</p>
           <p className="mt-1 text-sm text-marrom/80">
-            Só dá para repor o que foi retirado na fábrica. {lanca ? 'Registre a retirada primeiro e volte aqui.' : 'Peça à gestão ou à produção para registrar a sua retirada.'}
+            {estoque.direto ? 'Não há pacote pronto no app, nem com você nem na fábrica. Registre a produção e volte aqui.' : `Só dá para repor o que foi retirado na fábrica. ${lanca ? 'Registre a retirada primeiro e volte aqui.' : 'Peça à gestão ou à produção para registrar a sua retirada.'}`}
           </p>
           {lanca && (
             <div className="mt-3">
               <BotaoLink para="/estoque" cheio>
-                Registrar retirada
+                {estoque.direto ? 'Abrir estoque' : 'Registrar retirada'}
               </BotaoLink>
             </div>
           )}
