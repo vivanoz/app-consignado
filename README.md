@@ -1,0 +1,69 @@
+# Viva Noz Consignado
+
+Controle da operação em consignação da Viva Noz: o que está com cada representante, o que ficou em cada loja, o que foi vendido e reposto em cada visita, quanto cada loja deve e o que já foi pago.
+
+## Como está montado
+
+| Parte | Onde | O que faz |
+|---|---|---|
+| App | `src/` | React + Vite + Tailwind. Feito para o celular, instalável (PWA). |
+| Banco | `supabase/migrations/` | Postgres no Supabase: tabelas, permissões por perfil e funções de lançamento. |
+| Testes | `tests/` | Aplicam as migrações em um Postgres em memória e conferem regras e permissões. |
+
+### Perfis de acesso
+
+| Perfil | Enxerga e faz |
+|---|---|
+| Gestão | Tudo: cadastros, preços, equipe, confirmação de Pix, estorno de visita. |
+| Produção | Estoque dos representantes, retirada e devolução. Não vê lojas, preços nem acertos. |
+| Representante | Suas lojas, seu estoque, suas visitas e seus acertos. Não vê custos nem dados de outros representantes. |
+
+Todo usuário novo nasce bloqueado. A gestão escolhe o perfil e libera em **Mais > Equipe e acessos**.
+
+### Regras que o banco garante
+
+- Saldo é a soma das movimentações (`fábrica → representante → loja → vendido`), nunca um número digitado.
+- Em cada visita: `vendido = saldo anterior − encontrado` e `fica = encontrado − recolhido − baixa + reposto`.
+- O acerto grava o preço vigente na data da visita. Mudar a tabela depois não muda acertos antigos.
+- Só a gestão confirma pagamento, e só com o valor exato do acerto.
+- Lançamento não se edita nem se apaga. Erro se corrige com estorno, que fica no histórico.
+- Reenviar o mesmo lançamento (internet ruim) não duplica nada.
+
+## Rodar no computador
+
+```bash
+npm install
+npm test
+```
+
+Para abrir o app é preciso um projeto Supabase. Copie `.env.example` para `.env.local`, preencha e rode:
+
+```bash
+npm run dev
+```
+
+## Colocar o banco no ar (uma vez)
+
+1. Criar o projeto no Supabase com a conta da Viva Noz.
+2. `npx supabase login` e `npx supabase link --project-ref <ref do projeto>`.
+3. `npx supabase db push` aplica as migrações.
+4. No painel: Authentication > Sign In / Providers, desligar "Allow new users to sign up". Pessoas entram por convite.
+5. Convidar o primeiro usuário e torná-lo gestão no SQL Editor:
+
+```sql
+update public.perfis set papel = 'gestao', ativo = true where email = 'email-da-pessoa';
+```
+
+Daí em diante, os demais acessos são liberados pelo próprio app.
+
+## Publicar uma versão nova
+
+```bash
+npm run publicar
+```
+
+Roda os testes, compila e envia para o GitHub Pages: https://vivanoz.github.io/app-consignado/
+
+## Fora desta versão
+
+Fechamento mensal e comissão do representante, estoque da fábrica e de insumos, contagem mensal com desconto, comprovante de Pix anexado, pagamento parcial de acerto.
