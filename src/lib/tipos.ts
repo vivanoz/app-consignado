@@ -218,3 +218,49 @@ export interface Amostra {
   observacoes: string | null
   amostra_itens: { produto_id: string; quantidade: number }[]
 }
+
+export type Canal = 'todos' | 'loja' | 'varejo'
+
+export interface Fornecedor {
+  id: string
+  nome: string
+  contato_nome: string | null
+  telefone: string | null
+  email: string | null
+  cidade: string | null
+  observacoes: string | null
+  ativo: boolean
+}
+
+// Insumo com a situação do estoque (view insumos_situacao).
+export interface Insumo {
+  id: string
+  nome: string
+  unidade: 'g' | 'un'
+  estoque_ideal: number
+  fornecedor_id: string | null
+  ordem: number
+  ativo: boolean
+  saldo: number
+  estoque_minimo: number
+  comprar: boolean
+  falta_para_o_ideal: number
+}
+
+export interface Receita {
+  id: string
+  produto_id: string
+  insumo_id: string
+  canal: Canal
+  quantidade: number
+}
+
+export interface Compra {
+  id: string
+  fornecedor_id: string | null
+  comprada_em: string
+  valor_frete: number
+  valor_total: number
+  observacoes: string | null
+  compra_itens: { insumo_id: string; quantidade: number; valor: number }[]
+}

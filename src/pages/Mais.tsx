@@ -39,6 +39,25 @@ export function Mais() {
         </Cartao>
       )}
 
+      {papel !== 'representante' && (
+        <Cartao className="space-y-3">
+          <Rotulo>Produção</Rotulo>
+          <BotaoLink para="/mais/insumos" variante="secundario" cheio>
+            Matérias-primas
+          </BotaoLink>
+          {ehGestao && (
+            <>
+              <BotaoLink para="/mais/produtos" variante="secundario" cheio>
+                Produtos e receitas
+              </BotaoLink>
+              <BotaoLink para="/mais/fornecedores" variante="secundario" cheio>
+                Fornecedores
+              </BotaoLink>
+            </>
+          )}
+        </Cartao>
+      )}
+
       <Cartao>
         <Rotulo>Sua conta</Rotulo>
         <div className="mt-3 flex items-center gap-3">

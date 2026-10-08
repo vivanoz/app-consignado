@@ -549,3 +549,99 @@ describe('potenciais clientes e amostras', () => {
     expect(await b.como(bia, `select 1 from public.prospectos`)).toHaveLength(1)
   })
 })
+
+describe('matérias-primas', () => {
+  const insumo: Record<string, string> = {}
+  const saldos = async () =>
+    Object.fromEntries((await b.admin(`select nome, saldo::float from public.insumos_situacao`)).map((i) => [i.nome, i.saldo]))
+  const CAJU = 'Castanha de caju torrada sem sal W1'
+  const EMBALAGEM = 'Embalagem kraft 100 g'
+  const LOGO = 'Adesivo logo central (consignado e direto)'
+  const VAREJO = 'Adesivo varejo'
+
+  it('os insumos e as receitas vêm cadastrados', async () => {
+    for (const i of await b.admin(`select id, nome from public.insumos`)) insumo[i.nome] = i.id
+    expect(Object.keys(insumo)).toHaveLength(11)
+    const [mix] = await b.admin(`select sum(r.quantidade)::float as gramas from public.receitas r join public.insumos i on i.id = r.insumo_id
+      where r.produto_id = $1 and i.unidade = 'g'`, [prod['MIX-100']])
+    expect(mix.gramas).toBe(100)
+  })
+
+  it('representante não enxerga insumos, receitas, fornecedores nem compras', async () => {
+    for (const tabela of ['insumos', 'receitas', 'fornecedores', 'compras', 'compra_itens', 'insumo_movimentacoes', 'insumos_situacao']) {
+      expect(await b.como(ana, `select * from public.${tabela}`), tabela).toHaveLength(0)
+    }
+    await expect(b.como(ana, `select public.registrar_compra($1, null, '[]'::jsonb)`, [uuid()])).rejects.toThrow(/Só a gestão/)
+    await expect(b.como(ana, `select public.registrar_contagem_insumo($1, $2, 10)`, [uuid(), insumo[CAJU]])).rejects.toThrow(/gestão ou a produção/)
+    await expect(b.como(ana, `update public.insumos set estoque_ideal = 1`)).resolves.toHaveLength(0)
+  })
+
+  it('produção vê quantidades, mas não vê compras nem fornecedores', async () => {
+    expect(await b.como(producao, `select * from public.insumos`)).toHaveLength(11)
+    expect(await b.como(producao, `select * from public.compras`)).toHaveLength(0)
+    expect(await b.como(producao, `select * from public.fornecedores`)).toHaveLength(0)
+    await expect(b.como(producao, `select public.registrar_compra($1, null, '[]'::jsonb)`, [uuid()])).rejects.toThrow(/Só a gestão/)
+  })
+
+  it('contagem registra o estoque atual; compra soma quantidade e guarda o valor', async () => {
+    // Zera o que os testes de produção acima já consumiram.
+    for (const nome of [CAJU, EMBALAGEM, LOGO, VAREJO]) {
+      await b.como(producao, `select public.registrar_contagem_insumo($1, $2, 0)`, [uuid(), insumo[nome]])
+    }
+    await b.como(producao, `select public.registrar_contagem_insumo($1, $2, 1000)`, [uuid(), insumo[CAJU]])
+    const [{ id: fornecedor }] = await b.como(gestao, `insert into public.fornecedores (nome) values ('Fornecedor Teste') returning id`)
+    const id = uuid()
+    const itens = JSON.stringify([
+      { insumo_id: insumo[CAJU], quantidade: 5000, valor: 300 },
+      { insumo_id: insumo[EMBALAGEM], quantidade: 300, valor: 120 },
+    ])
+    const [{ r }] = await b.como(gestao, `select public.registrar_compra($1, $2, $3::jsonb, null, 30) as r`, [id, fornecedor, itens])
+    expect(Number(r.valor_total)).toBe(450)
+    const [{ r: repetida }] = await b.como(gestao, `select public.registrar_compra($1, $2, $3::jsonb, null, 30) as r`, [id, fornecedor, itens])
+    expect(repetida.repetida).toBe(true)
+
+    const s = await saldos()
+    expect(s[CAJU]).toBe(6000)
+    expect(s[EMBALAGEM]).toBe(300)
+  })
+
+  it('produzir desconta os insumos pela receita, conforme o destino do lote', async () => {
+    await b.como(producao, `select public.registrar_producao($1, $2, 10)`, [uuid(), prod['MIX-100']])
+    let s = await saldos()
+    expect(s[CAJU]).toBe(6000 - 220) // 22 g por pacote
+    expect(s[EMBALAGEM]).toBe(290)
+    expect(s[LOGO]).toBe(-10) // sem estoque lançado: fica negativo, não trava a produção
+    expect(s[VAREJO]).toBe(0)
+
+    await b.como(producao, `select public.registrar_producao($1, $2, 5, null, null, null, 'varejo')`, [uuid(), prod['MIX-100']])
+    s = await saldos()
+    expect(s[EMBALAGEM]).toBe(285)
+    expect(s[LOGO]).toBe(-10)
+    expect(s[VAREJO]).toBe(-5)
+  })
+
+  it('abaixo de 30% do estoque ideal, sinaliza compra', async () => {
+    await b.como(gestao, `update public.insumos set estoque_ideal = 1000 where id = $1`, [insumo[EMBALAGEM]])
+    const situacao = async () => (await b.como(gestao, `select comprar, estoque_minimo::float as minimo, falta_para_o_ideal::float as falta from public.insumos_situacao where id = $1`, [insumo[EMBALAGEM]]))[0]
+    expect(await situacao()).toEqual({ comprar: true, minimo: 300, falta: 715 }) // tem 285
+    await b.como(gestao, `select public.registrar_contagem_insumo($1, $2, 301)`, [uuid(), insumo[EMBALAGEM]])
+    expect((await situacao()).comprar).toBe(false)
+    // Insumo sem estoque ideal definido não gera alerta.
+    const [caju] = await b.como(gestao, `select comprar from public.insumos_situacao where id = $1`, [insumo[CAJU]])
+    expect(caju.comprar).toBe(false)
+  })
+
+  it('compra e movimentação de insumo não se alteram', async () => {
+    await expect(b.admin(`update public.compras set valor_total = 1`)).rejects.toThrow(/não podem ser alterados/)
+    await expect(b.admin(`delete from public.insumo_movimentacoes`)).rejects.toThrow(/não podem ser alterados/)
+    await expect(b.como(gestao, `insert into public.insumo_movimentacoes (operacao_id, insumo_id, tipo, quantidade, registrado_por) values ($1, $2, 'ajuste', 999, $3)`, [uuid(), insumo[CAJU], gestao])).rejects.toThrow(/permission denied/)
+  })
+
+  it('gestão edita a receita e cadastra produto novo', async () => {
+    await b.como(gestao, `update public.receitas set quantidade = 25 where produto_id = $1 and insumo_id = $2`, [prod['MIX-100'], insumo[CAJU]])
+    await expect(b.como(producao, `update public.receitas set quantidade = 1`)).resolves.toHaveLength(0)
+    const [{ id }] = await b.como(gestao, `insert into public.produtos (sku, nome, nome_curto, ordem) values ('NOVO-100', 'Produto Novo', 'Novo', 9) returning id`)
+    await b.como(gestao, `update public.produtos set ativo = false where id = $1`, [id])
+    await expect(b.como(ana, `insert into public.produtos (sku, nome, nome_curto) values ('X', 'X', 'X')`)).rejects.toThrow(/row-level security/)
+  })
+})

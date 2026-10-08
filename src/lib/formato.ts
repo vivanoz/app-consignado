@@ -97,3 +97,23 @@ export const NOME_PROSPECTO: Record<string, string> = {
 
 // Primeiro dia do mês corrente em Maringá (AAAA-MM-01).
 export const inicioDoMes = () => `${hoje().slice(0, 7)}-01`
+
+// Quantidade de insumo para leitura: gramas viram kg a partir de 1 kg.
+export function quantidadeInsumo(valor: number, unidade: 'g' | 'un') {
+  const n = Number(valor)
+  if (unidade === 'un') return `${n.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} un`
+  return Math.abs(n) >= 1000
+    ? `${(n / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kg`
+    : `${n.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} g`
+}
+
+// Na digitação, castanha é em kg e embalagem em unidades.
+export const UNIDADE_DE_COMPRA = { g: 'kg', un: 'un' } as const
+export const paraUnidadeBase = (valor: number, unidade: 'g' | 'un') => (unidade === 'g' ? valor * 1000 : valor)
+export const daUnidadeBase = (valor: number, unidade: 'g' | 'un') => (unidade === 'g' ? Number(valor) / 1000 : Number(valor))
+
+export const NOME_CANAL: Record<string, string> = {
+  todos: 'Sempre',
+  loja: 'Só loja (consignado e direto)',
+  varejo: 'Só varejo',
+}

@@ -15,8 +15,8 @@ Controle da operação em consignação da Viva Noz: o que está com cada repres
 | Perfil | Enxerga e faz |
 |---|---|
 | Gestão | Tudo: cadastros, preços, equipe, confirmação de Pix, estorno de visita. |
-| Produção | Estoque dos representantes, retirada e devolução. Não vê lojas, preços nem acertos. |
-| Representante | Suas lojas, seu estoque, suas visitas e seus acertos. Não vê custos nem dados de outros representantes. |
+| Produção | Produção, estoque da fábrica e dos representantes, retirada, devolução e quantidades de matéria-prima. Não vê lojas, preços, acertos nem valores de compra. |
+| Representante | Suas lojas e potenciais clientes, seu estoque, visitas, vendas varejo, amostras e comissões. Não vê custos, compras, fornecedores, receitas nem dados de outros representantes. |
 
 Qualquer pessoa cria a conta em **Primeiro acesso**, mas ela nasce bloqueada e não enxerga nada. A gestão escolhe o perfil e libera em **Mais > Equipe e acessos**.
 
@@ -30,6 +30,9 @@ Qualquer pessoa cria a conta em **Primeiro acesso**, mas ela nasce bloqueada e n
 - Reenviar o mesmo lançamento (internet ruim) não duplica nada.
 - Confirmar o Pix de uma loja gera a comissão do representante, com vencimento no 5º dia útil do mês seguinte. O bônus de abertura sai no segundo acerto pago da loja.
 - O pagamento ao representante agrupa comissões, soma o valor e guarda o comprovante.
+- Venda varejo baixa o estoque de quem vendeu e fatura pelo preço médio de varejo; a comissão sai quando a gestão confirma que o dinheiro chegou.
+- Amostra entregue a potencial cliente sai do estoque sem gerar cobrança.
+- Produção desconta as matérias-primas pela receita de cada produto; abaixo de 30% do estoque ideal, o app sinaliza compra.
 
 ## Rodar no computador
 
@@ -68,4 +71,4 @@ Roda os testes, compila e envia para o GitHub Pages: https://vivanoz.github.io/a
 
 ## Fora desta versão
 
-Estoque da fábrica e de insumos, contagem mensal do estoque do representante com desconto, pagamento parcial de acerto, e-mails próprios (exigem serviço de envio).
+Contagem mensal do estoque do representante com desconto, pagamento parcial de acerto, custo e margem por produto a partir das compras, e-mails próprios (exigem serviço de envio).

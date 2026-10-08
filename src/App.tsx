@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { Carregando } from './components/ui'
+import { Fornecedores, Produtos } from './pages/Cadastros'
+import { Insumos } from './pages/Insumos'
 import { useAcesso } from './lib/auth'
 import { configurado } from './lib/supabase'
 import { DefinirSenha, Entrada, SemAcesso, SemConfiguracao } from './pages/Entrada'
@@ -52,8 +54,12 @@ export function App() {
           <>
             <Route path="mais/precos" element={<Precos />} />
             <Route path="mais/equipe" element={<Equipe />} />
+            <Route path="mais/fornecedores" element={<Fornecedores />} />
+            <Route path="mais/produtos" element={<Produtos />} />
           </>
         )}
+        {/* Matérias-primas: gestão cuida, produção consulta. Representante não vê. */}
+        {papel !== 'representante' && <Route path="mais/insumos" element={<Insumos />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

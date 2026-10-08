@@ -7,6 +7,11 @@ import { supabase } from './supabase'
 import type {
   Acerto,
   Amostra,
+  Canal,
+  Compra,
+  Fornecedor,
+  Insumo,
+  Receita,
   Comissao,
   Condicao,
   ItemVisitaEnvio,
@@ -340,6 +345,8 @@ export const useRegistrarProducao = () =>
       itens: { operacaoId: string; produtoId: string; quantidade: number }[]
       produzidoEm: string
       validade: string | null
+      // Para onde o lote foi embalado: define quais adesivos saem do estoque.
+      canal: Exclude<Canal, 'todos'>
       // Quem produz e já sai para vender leva o lote direto para o próprio estoque.
       retirar: { operacaoId: string; representanteId: string } | null
     }) => {
@@ -350,6 +357,7 @@ export const useRegistrarProducao = () =>
           p_quantidade: item.quantidade,
           p_produzido_em: p.produzidoEm,
           p_validade: p.validade,
+          p_canal: p.canal,
         })
       }
       if (p.retirar) {
@@ -421,5 +429,79 @@ export const useRegistrarAmostra = () =>
       p_itens: a.itens,
       p_entregue_em: a.entregueEm,
       p_observacoes: a.observacoes || null,
+    }),
+  )
+
+// ── Matérias-primas (gestão; a produção só consulta quantidades) ──
+
+export const useInsumos = (ativo = true) =>
+  useQuery({
+    queryKey: ['insumos'],
+    enabled: ativo,
+    queryFn: () => ler<Insumo[]>(supabase.from('insumos_situacao').select('*').order('ordem').order('nome')),
+  })
+
+export const useFornecedores = (ativo = true) =>
+  useQuery({
+    queryKey: ['fornecedores'],
+    enabled: ativo,
+    queryFn: () => ler<Fornecedor[]>(supabase.from('fornecedores').select('*').order('nome')),
+  })
+
+export const useReceitas = (ativo = true) =>
+  useQuery({
+    queryKey: ['receitas'],
+    enabled: ativo,
+    queryFn: () => ler<Receita[]>(supabase.from('receitas').select('*')),
+  })
+
+export const useCompras = (ativo = true) =>
+  useQuery({
+    queryKey: ['compras'],
+    enabled: ativo,
+    queryFn: () =>
+      ler<Compra[]>(
+        supabase.from('compras').select('*, compra_itens(insumo_id, quantidade, valor)').order('comprada_em', { ascending: false }).limit(200),
+      ),
+  })
+
+const salvarEm =
+  <T extends { id: string }>(tabela: string) =>
+  async (registro: Partial<T>) => {
+    const { id, ...campos } = registro
+    const dados = campos as Record<string, unknown>
+    return id ? ler(supabase.from(tabela).update(dados).eq('id', id)) : ler(supabase.from(tabela).insert(dados))
+  }
+
+export const useSalvarFornecedor = () => useEscrita(salvarEm<Fornecedor>('fornecedores'))
+export const useSalvarProduto = () => useEscrita(salvarEm<Produto>('produtos'))
+export const useSalvarReceita = () => useEscrita(salvarEm<Receita>('receitas'))
+export const useRemoverReceita = () => useEscrita((id: string) => ler(supabase.from('receitas').delete().eq('id', id)))
+
+// Grava na tabela de insumos (a leitura vem da view, que tem colunas calculadas).
+export const useSalvarInsumo = () =>
+  useEscrita((i: { id?: string; nome?: string; unidade?: 'g' | 'un'; estoque_ideal?: number; fornecedor_id?: string | null; ativo?: boolean; ordem?: number }) =>
+    salvarEm<{ id: string }>('insumos')(i),
+  )
+
+export const useContarInsumo = () =>
+  useEscrita((c: { operacaoId: string; insumoId: string; quantidade: number; motivo: string }) =>
+    chamar('registrar_contagem_insumo', {
+      p_operacao_id: c.operacaoId,
+      p_insumo_id: c.insumoId,
+      p_quantidade_contada: c.quantidade,
+      p_motivo: c.motivo || null,
+    }),
+  )
+
+export const useRegistrarCompra = () =>
+  useEscrita((c: { id: string; fornecedorId: string | null; itens: { insumo_id: string; quantidade: number; valor: number }[]; compradaEm: string; frete: number; observacoes: string }) =>
+    chamar<{ compra_id: string; valor_total: number }>('registrar_compra', {
+      p_id: c.id,
+      p_fornecedor_id: c.fornecedorId,
+      p_itens: c.itens,
+      p_comprada_em: c.compradaEm,
+      p_valor_frete: c.frete,
+      p_observacoes: c.observacoes || null,
     }),
   )

@@ -142,6 +142,7 @@ function Producao({ aoFechar }: { aoFechar: () => void }) {
   const [produzidoEm, setProduzidoEm] = useState(hoje())
   const [validade, setValidade] = useState('')
   const [ficaComigo, setFicaComigo] = useState(false)
+  const [canal, setCanal] = useState<'loja' | 'varejo'>('loja')
 
   const total = Object.values(quantidades).reduce((s, n) => s + n, 0)
 
@@ -157,6 +158,7 @@ function Producao({ aoFechar }: { aoFechar: () => void }) {
       itens,
       produzidoEm,
       validade: validade || null,
+      canal,
       retirar: ficaComigo && meuRepresentanteId ? { operacaoId: ids.retirada, representanteId: meuRepresentanteId } : null,
     })
     aoFechar()
@@ -176,6 +178,12 @@ function Producao({ aoFechar }: { aoFechar: () => void }) {
         <Campo rotulo="Produzido em" type="date" max={hoje()} value={produzidoEm} onChange={(e) => setProduzidoEm(e.target.value)} />
         <Campo rotulo="Validade (opcional)" type="date" value={validade} onChange={(e) => setValidade(e.target.value)} />
       </div>
+
+      <Selecao rotulo="Embalado para" value={canal} onChange={(e) => setCanal(e.target.value as 'loja' | 'varejo')}>
+        <option value="loja">Loja (consignado e compra direta)</option>
+        <option value="varejo">Venda varejo</option>
+      </Selecao>
+      <p className="-mt-2 text-xs text-marrom/65">Define quais adesivos saem do estoque de insumos. As castanhas e a embalagem saem pela receita de cada sabor.</p>
 
       {meuRepresentanteId && (
         <label className="flex items-start gap-3 rounded-2xl border border-linha bg-papel p-4 text-sm">
@@ -204,8 +212,14 @@ function Lancamento({ tipo, aoFechar }: { tipo: 'retirada' | 'devolucao'; aoFech
   const saldos = useSaldosRepresentante()
   const saldosFabrica = useSaldosFabrica()
   const movimentar = useMovimentarEstoque()
+  const produzir = useRegistrarProducao()
   // Criado uma vez por lançamento: tentar de novo não duplica.
   const [operacaoId] = useState(() => crypto.randomUUID())
+  const [idsProducao] = useState<Record<string, string>>({})
+  // Pacote que sai e não estava lançado como produzido: produz na hora, para
+  // a fábrica não ficar negativa e os insumos serem descontados.
+  const [produzirFalta, setProduzirFalta] = useState(true)
+  const [canal, setCanal] = useState<'loja' | 'varejo'>('loja')
   const [representanteId, setRepresentanteId] = useState(meuRepresentanteId ?? '')
   const [quantidades, setQuantidades] = useState<Record<string, number>>({})
   const [observacao, setObservacao] = useState('')
@@ -217,7 +231,22 @@ function Lancamento({ tipo, aoFechar }: { tipo: 'retirada' | 'devolucao'; aoFech
   const naFabrica = (produtoId: string) => saldosFabrica.data?.find((s) => s.produto_id === produtoId)?.saldo ?? 0
   const alemDaFabrica = retirada && (produtos.data ?? []).some((p) => (quantidades[p.id] ?? 0) > Math.max(0, naFabrica(p.id)))
 
+  const faltas = retirada
+    ? (produtos.data ?? [])
+        .map((p) => ({ produtoId: p.id, quantidade: Math.max(0, (quantidades[p.id] ?? 0) - Math.max(0, naFabrica(p.id))) }))
+        .filter((f) => f.quantidade > 0)
+    : []
+
   async function enviar() {
+    if (faltas.length > 0 && produzirFalta) {
+      await produzir.mutateAsync({
+        itens: faltas.map((f) => ({ ...f, operacaoId: (idsProducao[f.produtoId] ??= crypto.randomUUID()) })),
+        produzidoEm: hoje(),
+        validade: null,
+        canal,
+        retirar: null,
+      })
+    }
     await movimentar.mutateAsync({
       tipo,
       operacaoId,
@@ -259,15 +288,26 @@ function Lancamento({ tipo, aoFechar }: { tipo: 'retirada' | 'devolucao'; aoFech
       )}
 
       {alemDaFabrica && (
-        <p className="rounded-xl border border-ouro bg-ouro/10 px-4 py-3 text-sm">
-          A retirada é maior do que o estoque da fábrica no app. Dá para gravar, mas o saldo da fábrica fica negativo até a produção ser lançada.
-        </p>
+        <div className="space-y-3 rounded-2xl border border-ouro bg-ouro/10 p-4 text-sm">
+          <label className="flex items-start gap-3">
+            <input type="checkbox" checked={produzirFalta} onChange={(e) => setProduzirFalta(e.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[#455020]" />
+            <span>
+              <strong>Lançar como produzidos os {faltas.reduce((s, f) => s + f.quantidade, 0)} pacotes que a fábrica não tem no app.</strong> Assim o estoque da fábrica não fica negativo e os insumos são descontados.
+            </span>
+          </label>
+          {produzirFalta && (
+            <Selecao rotulo="Embalados para" value={canal} onChange={(e) => setCanal(e.target.value as 'loja' | 'varejo')}>
+              <option value="loja">Loja (consignado e compra direta)</option>
+              <option value="varejo">Venda varejo</option>
+            </Selecao>
+          )}
+        </div>
       )}
 
       <AreaDeTexto rotulo="Observação" valor={observacao} aoMudar={setObservacao} dica="Opcional." />
-      <Aviso erro={movimentar.error} />
-      <Botao cheio disabled={!representanteId || total === 0 || movimentar.isPending} onClick={enviar}>
-        {movimentar.isPending ? 'Gravando.' : `Gravar ${retirada ? 'retirada' : 'devolução'} de ${pacotes(total)}`}
+      <Aviso erro={produzir.error ?? movimentar.error} />
+      <Botao cheio disabled={!representanteId || total === 0 || movimentar.isPending || produzir.isPending} onClick={enviar}>
+        {movimentar.isPending || produzir.isPending ? 'Gravando.' : `Gravar ${retirada ? 'retirada' : 'devolução'} de ${pacotes(total)}`}
       </Botao>
       <Botao variante="secundario" cheio onClick={aoFechar}>
         Cancelar

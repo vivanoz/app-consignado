@@ -13,6 +13,11 @@ App de controle da operação em consignação da Viva Noz: estoque com represen
 - Migração aplicada em produção não se altera: cria-se uma nova.
 - Comissão nasce quando a gestão confirma o Pix da loja e vence no 5º dia útil (segunda a sexta, fora `feriados`) do mês seguinte ao do Pix. Pagamento ao representante é um repasse que agrupa comissões.
 - Fotos e comprovantes ficam no Storage, em espaços privados; a pasta do arquivo (`lojas/<id>/…`, `acertos/<id>/…`) define quem pode ver.
+- Venda varejo (na rua) baixa o estoque de quem vendeu, fatura pelo preço médio de varejo da tabela e abre acerto: o dinheiro está com quem vendeu até a gestão confirmar.
+- Amostra só vai para potencial cliente (`prospectos`): sai do estoque, sem acerto nem comissão.
+- Matéria-prima: produção desconta insumos pela receita do produto e pelo destino do lote (loja ou varejo). Abaixo de 30% do estoque ideal, sinaliza compra. Valores de compra e fornecedores são só da gestão.
+- Antes de mostrar algo novo, decidir o que cada perfil vê. Representante tem visão operacional: suas lojas, potenciais, estoque, visitas, vendas e comissões. Nada de custo, compra, fornecedor, receita ou dado de outro representante.
+- Em função do banco, comparação com `app.meu_representante_id()` dentro de `if not (...)` precisa de `coalesce(..., false)`: quem não tem cadastro de representante devolve nulo e o `if` não barra.
 - Texto de interface em português, na voz da marca: frases curtas, ponto final, sem exclamação.
 
 ## Comandos

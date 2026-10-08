@@ -1,6 +1,6 @@
 import { CartaoLoja } from '../components/CartaoLoja'
 import { BotaoLink, Cartao, Carregando, Rotulo, SaldoPorProduto, Titulo } from '../components/ui'
-import { useAcertos, useAmostras, useComissoes, usePerfis, useProdutos, useProspectos, useSaldosRepresentante } from '../lib/api'
+import { useAcertos, useAmostras, useComissoes, useInsumos, usePerfis, useProdutos, useProspectos, useSaldosRepresentante } from '../lib/api'
 import { useAcesso } from '../lib/auth'
 import { data, hoje, inicioDoMes, pacotes, reais } from '../lib/formato'
 import { porUrgencia, useResumoLojas } from '../lib/resumo'
@@ -17,6 +17,8 @@ export function Inicio() {
   const comissoes = useComissoes(comLojas)
   const perfis = usePerfis()
   const amostras = useAmostras(comLojas)
+  const insumos = useInsumos(papel === 'gestao' || papel === 'producao')
+  const insumosEmFalta = (insumos.data ?? []).filter((i) => i.ativo && (i.comprar || Number(i.saldo) < 0))
   const prospectos = useProspectos(comLojas)
 
   // Varejo e amostras do mês corrente, de quem a pessoa enxerga.
@@ -60,6 +62,20 @@ export function Inicio() {
             <div className="mt-3">
               <BotaoLink para="/mais/equipe" variante="secundario">
                 Ver equipe
+              </BotaoLink>
+            </div>
+          </Cartao>
+        )}
+
+        {insumosEmFalta.length > 0 && (
+          <Cartao className="border-alerta/40 bg-alerta/8">
+            <p className="text-sm font-semibold">
+              {insumosEmFalta.length === 1 ? 'Uma matéria-prima precisa' : `${insumosEmFalta.length} matérias-primas precisam`} de compra.
+            </p>
+            <p className="mt-1 text-xs text-marrom/70">{insumosEmFalta.map((i) => i.nome).join(' · ')}</p>
+            <div className="mt-3">
+              <BotaoLink para="/mais/insumos" variante="secundario">
+                Ver matérias-primas
               </BotaoLink>
             </div>
           </Cartao>
