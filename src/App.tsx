@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { Carregando } from './components/ui'
 import { Fornecedores, Produtos } from './pages/Cadastros'
+import { Crm, ImportarLeads } from './pages/Crm'
 import { Insumos } from './pages/Insumos'
 import { useAcesso } from './lib/auth'
 import { configurado } from './lib/supabase'
@@ -15,7 +16,7 @@ import { Lojas } from './pages/Lojas'
 import { Equipe } from './pages/Equipe'
 import { Mais, Precos } from './pages/Mais'
 import { NovaVisita } from './pages/NovaVisita'
-import { PotencialDetalhe, PotencialForm, Potenciais } from './pages/Potenciais'
+import { PotencialDetalhe, PotencialForm } from './pages/Potenciais'
 import { VendaVarejo } from './pages/VendaVarejo'
 
 export function App() {
@@ -44,10 +45,11 @@ export function App() {
             <Route path="lojas/:id/visita" element={<NovaVisita />} />
             <Route path="financeiro" element={<Financeiro />} />
             <Route path="varejo" element={<VendaVarejo />} />
-            <Route path="potenciais" element={<Potenciais />} />
-            <Route path="potenciais/novo" element={<PotencialForm />} />
-            <Route path="potenciais/:id" element={<PotencialDetalhe />} />
-            <Route path="potenciais/:id/editar" element={<PotencialForm />} />
+            <Route path="crm" element={<Crm />} />
+            <Route path="crm/novo" element={<PotencialForm />} />
+            <Route path="crm/importar" element={<ImportarLeads />} />
+            <Route path="crm/:id" element={<PotencialDetalhe />} />
+            <Route path="crm/:id/editar" element={<PotencialForm />} />
           </>
         )}
         {ehGestao && (

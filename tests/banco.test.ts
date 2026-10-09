@@ -530,7 +530,10 @@ describe('potenciais clientes e amostras', () => {
     expect(await b.admin(`select (select count(*) from public.acertos)::int as acertos, (select count(*) from public.comissoes)::int as comissoes`)).toEqual([contagem])
 
     const [p] = await b.admin(`select status from public.prospectos where id = $1`, [potencial])
-    expect(p.status).toBe('em_conversa')
+    // Amostra entregue avança o lead no funil e fica no histórico de interações.
+    expect(p.status).toBe('amostra')
+    expect(await b.como(ana, `select tipo, descricao from public.interacoes where prospecto_id = $1`, [potencial]))
+      .toEqual([{ tipo: 'visita', descricao: 'Amostra entregue: Mix 1, Caju com Sal 1' }])
     expect(await b.admin(`select origem, destino, tipo from public.movimentacoes where operacao_id = $1 limit 1`, [id]))
       .toEqual([{ origem: 'representante', destino: 'amostra', tipo: 'amostra' }])
   })
@@ -743,5 +746,57 @@ describe('dados de cobrança', () => {
     expect(await b.como(producao, `select pix_chave from public.empresa`)).toHaveLength(0)
     expect(await b.como(inativo, `select pix_chave from public.empresa`)).toHaveLength(0)
     await expect(b.como(gestao, `insert into public.empresa (id) values (true)`)).rejects.toThrow(/permission denied/)
+  })
+})
+
+describe('CRM: atividades e interações', () => {
+  it('cada visita fecha o lembrete de reposição anterior e abre o próximo, no prazo da loja', async () => {
+    // As visitas dos testes acima já passaram pelo gatilho: sobra um lembrete aberto por loja.
+    const abertos = await b.admin(`select vence_em::text, titulo, representante_id from public.atividades where loja_id = $1 and tipo = 'reposicao' and concluida_em is null`, [lojaAna])
+    expect(abertos).toHaveLength(1)
+    const [esperado] = await b.admin(`select (app.hoje() + 15)::text as dia`)
+    expect(abertos[0]).toEqual({ vence_em: esperado.dia, titulo: 'Voltar para repor', representante_id: repAna })
+    const [fechados] = await b.admin(`select count(*)::int as n from public.atividades where loja_id = $1 and tipo = 'reposicao' and concluida_em is not null`, [lojaAna])
+    expect(fechados.n).toBeGreaterThan(0)
+
+    await b.como(gestao, `update public.lojas set dias_reposicao = 7 where id = $1`, [lojaAna])
+    await visita(ana, lojaAna, { 'MIX-100': { encontrado: 7 }, 'CAR-100': { encontrado: 10 }, 'CAJU-100': { encontrado: 3 } })
+    const depois = await b.admin(`select (vence_em - app.hoje()) as dias from public.atividades where loja_id = $1 and tipo = 'reposicao' and concluida_em is null`, [lojaAna])
+    expect(depois).toEqual([{ dias: 7 }])
+  })
+
+  it('representante cria e conclui os seus lembretes; não vê nem mexe nos de outro', async () => {
+    const [{ id }] = await b.como(ana, `insert into public.atividades (titulo, vence_em, representante_id, loja_id) values ('Levar expositor novo', app.hoje() + 2, $1, $2) returning id`, [repAna, lojaAna])
+    await expect(b.como(ana, `insert into public.atividades (titulo, vence_em, representante_id) values ('Para a colega', app.hoje(), $1)`, [repBia])).rejects.toThrow(/row-level security/)
+    expect(await b.como(bia, `select 1 from public.atividades where representante_id = $1`, [repAna])).toHaveLength(0)
+    expect(await b.como(producao, `select 1 from public.atividades`)).toHaveLength(0)
+
+    await b.como(bia, `update public.atividades set concluida_em = now() where id = $1`, [id])
+    expect((await b.admin(`select concluida_em from public.atividades where id = $1`, [id]))[0].concluida_em).toBeNull()
+    await b.como(ana, `update public.atividades set concluida_em = now(), concluida_por = $2 where id = $1`, [id, ana])
+    expect((await b.admin(`select concluida_em from public.atividades where id = $1`, [id]))[0].concluida_em).not.toBeNull()
+    await expect(b.admin(`delete from public.atividades where id = $1`, [id])).rejects.toThrow(/não podem ser alterados/)
+  })
+
+  it('gestão cria lembrete para qualquer representante', async () => {
+    await b.como(gestao, `insert into public.atividades (titulo, vence_em, representante_id) values ('Ligar para o fornecedor de expositores', app.hoje(), $1)`, [repBia])
+    expect(await b.como(bia, `select titulo from public.atividades where tipo = 'lembrete'`)).toHaveLength(1)
+  })
+
+  it('interação é histórico: quem cuida registra, ninguém edita, o outro não vê', async () => {
+    await b.como(ana, `insert into public.interacoes (tipo, descricao, representante_id, loja_id) values ('whatsapp', 'Pediu mais Caramelizada na próxima', $1, $2)`, [repAna, lojaAna])
+    await expect(b.como(ana, `insert into public.interacoes (tipo, descricao, representante_id, loja_id) values ('nota', 'x', $1, $2)`, [repBia, lojaBia])).rejects.toThrow(/row-level security/)
+    await expect(b.como(ana, `insert into public.interacoes (tipo, descricao, representante_id) values ('nota', 'sem dono', $1)`, [repAna])).rejects.toThrow(/check constraint/)
+    expect(await b.como(bia, `select 1 from public.interacoes where representante_id = $1`, [repAna])).toHaveLength(0)
+    await expect(b.como(ana, `update public.interacoes set descricao = 'mudei'`)).rejects.toThrow(/permission denied/)
+    await expect(b.admin(`update public.interacoes set descricao = 'mudei'`)).rejects.toThrow(/não podem ser alterados/)
+  })
+
+  it('lead avança pelas etapas do funil e guarda a origem', async () => {
+    const [{ id }] = await b.como(ana, `insert into public.prospectos (nome, representante_id, origem) values ('Clube Importado', $1, 'Planilha de clubes') returning id`, [repAna])
+    for (const etapa of ['em_conversa', 'amostra', 'negociacao', 'virou_loja']) {
+      await b.como(ana, `update public.prospectos set status = $2::public.prospecto_status where id = $1`, [id, etapa])
+    }
+    expect(await b.admin(`select status, origem from public.prospectos where id = $1`, [id])).toEqual([{ status: 'virou_loja', origem: 'Planilha de clubes' }])
   })
 })

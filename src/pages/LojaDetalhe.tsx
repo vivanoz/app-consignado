@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { Atividades } from '../components/Atividades'
+import { Interacoes } from '../components/Interacoes'
 import { ResumoVisita } from '../components/ResumoVisita'
 import { EnviarArquivo, Foto } from '../components/arquivos'
 import { Aviso, Botao, BotaoLink, Cartao, Carregando, Etiqueta, Rotulo, SaldoPorProduto, Titulo, Vazio } from '../components/ui'
@@ -118,6 +120,21 @@ export function LojaDetalhe() {
           <p className="mt-2 text-sm">{[l.contato_nome, l.contato_telefone].filter(Boolean).join(' · ')}</p>
           {l.observacoes && <p className="mt-2 text-sm whitespace-pre-line text-marrom/75">{l.observacoes}</p>}
         </Cartao>
+      )}
+
+      {(ehGestao || l.representante_id === meuRepresentanteId) && (
+        <section className="space-y-2.5">
+          <Rotulo>Lembretes deste cliente</Rotulo>
+          <p className="text-xs text-marrom/65">A cada visita, o app marca sozinho a volta para repor em {l.dias_reposicao} dias. O prazo muda em "Editar cadastro".</p>
+          <Atividades de={{ lojaId: l.id }} compacto />
+        </section>
+      )}
+
+      {(ehGestao || l.representante_id === meuRepresentanteId) && (
+        <section className="space-y-2.5">
+          <Rotulo>Pedidos e combinados</Rotulo>
+          <Interacoes de={{ lojaId: l.id }} representanteId={l.representante_id} />
+        </section>
       )}
 
       <section className="space-y-2.5">

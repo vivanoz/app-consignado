@@ -7,10 +7,12 @@ import { supabase } from './supabase'
 import type {
   Acerto,
   Amostra,
+  Atividade,
   Canal,
   Compra,
   Fornecedor,
   Insumo,
+  Interacao,
   Lancamento,
   Receita,
   Comissao,
@@ -588,3 +590,44 @@ export const useEmpresa = () =>
   })
 
 export const useSalvarEmpresa = () => useEscrita((e: Partial<Empresa>) => ler(supabase.from('empresa').update(e).eq('id', true)))
+
+// ── CRM: atividades (lembretes) e interações ──
+
+export const useAtividades = (ativo = true) => {
+  const escopo = useEscopo()
+  return useQuery({
+    queryKey: ['atividades', escopo],
+    enabled: ativo,
+    queryFn: () => {
+      const consulta = supabase.from('atividades').select('*')
+      return ler<Atividade[]>(
+        (escopo ? consulta.eq('representante_id', escopo) : consulta)
+          // Abertas primeiro (concluida_em nulo), depois as concluídas mais recentes.
+          .order('concluida_em', { ascending: false, nullsFirst: true })
+          .order('vence_em')
+          .limit(800),
+      )
+    },
+  })
+}
+
+export const useSalvarAtividade = () => useEscrita(salvarEm<Atividade>('atividades'))
+
+export const useInteracoes = (de: { lojaId?: string; prospectoId?: string }) =>
+  useQuery({
+    queryKey: ['interacoes', de.lojaId ?? null, de.prospectoId ?? null],
+    enabled: Boolean(de.lojaId || de.prospectoId),
+    queryFn: () => {
+      const consulta = supabase.from('interacoes').select('*')
+      return ler<Interacao[]>((de.lojaId ? consulta.eq('loja_id', de.lojaId) : consulta.eq('prospecto_id', de.prospectoId!)).order('ocorrido_em', { ascending: false }).limit(100))
+    },
+  })
+
+export const useRegistrarInteracao = () =>
+  useEscrita((i: Pick<Interacao, 'tipo' | 'descricao' | 'representante_id' | 'loja_id' | 'prospecto_id'>) => ler(supabase.from('interacoes').insert(i)))
+
+// Entrada de vários leads de uma vez (importação por planilha).
+export const useImportarProspectos = () =>
+  useEscrita(async (leads: Partial<Prospecto>[]) => {
+    for (let i = 0; i < leads.length; i += 200) await ler(supabase.from('prospectos').insert(leads.slice(i, i + 200)))
+  })

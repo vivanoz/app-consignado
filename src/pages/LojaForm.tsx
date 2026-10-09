@@ -23,6 +23,7 @@ const VAZIA = {
   observacoes: '',
   representante_id: '',
   modalidade: 'kit_teste' as Modalidade,
+  dias_reposicao: '15',
   status: 'ativa' as LojaStatus,
 }
 
@@ -60,6 +61,7 @@ export function LojaForm() {
         observacoes: l.observacoes ?? '',
         representante_id: l.representante_id,
         modalidade: l.modalidade,
+        dias_reposicao: String(l.dias_reposicao ?? 15),
         status: l.status,
       })
     }
@@ -155,6 +157,7 @@ export function LojaForm() {
       contato_nome: texto(form.contato_nome),
       contato_telefone: texto(form.contato_telefone),
       observacoes: texto(form.observacoes),
+      dias_reposicao: Math.min(180, Math.max(1, Math.round(Number(form.dias_reposicao)) || 15)),
     }
     // Representante, modalidade e status só a gestão muda depois de criada.
     if (!id || ehGestao) {
@@ -231,6 +234,9 @@ export function LojaForm() {
           <option value="encerrada">Encerrada</option>
         </Selecao>
       )}
+
+      <Campo rotulo="Voltar para repor a cada quantos dias" inputMode="numeric" pattern="\d{1,3}" {...campo('dias_reposicao')} />
+      <p className="-mt-2 text-xs text-marrom/65">Depois de cada visita o app cria o lembrete de voltar neste prazo.</p>
 
       <AreaDeTexto rotulo="Observações" valor={form.observacoes} aoMudar={(v) => setForm((f) => ({ ...f, observacoes: v }))} dica="Melhor horário, onde fica o expositor, combinado de reposição." />
 

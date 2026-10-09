@@ -1,8 +1,9 @@
 import { CartaoLoja } from '../components/CartaoLoja'
 import { BotaoLink, Cartao, Carregando, Rotulo, SaldoPorProduto, Titulo } from '../components/ui'
-import { useAcertos, useAmostras, useComissoes, useInsumos, usePerfis, useProdutos, useProspectos, useSaldosRepresentante } from '../lib/api'
+import { useAcertos, useAmostras, useAtividades, useComissoes, useInsumos, usePerfis, useProdutos, useProspectos, useSaldosRepresentante } from '../lib/api'
 import { useAcesso } from '../lib/auth'
 import { data, hoje, inicioDoMes, pacotes, reais } from '../lib/formato'
+import { emAndamento, prazo } from '../lib/crm'
 import { porUrgencia, useResumoLojas } from '../lib/resumo'
 
 const soma = (valores: number[]) => valores.reduce((s, v) => s + Number(v), 0)
@@ -17,6 +18,7 @@ export function Inicio() {
   const comissoes = useComissoes(comLojas)
   const perfis = usePerfis()
   const amostras = useAmostras(comLojas)
+  const atividades = useAtividades(comLojas)
   const insumos = useInsumos(papel === 'gestao' || papel === 'producao')
   const insumosEmFalta = (insumos.data ?? []).filter((i) => i.ativo && (i.comprar || Number(i.saldo) < 0))
   const prospectos = useProspectos(comLojas)
@@ -25,7 +27,7 @@ export function Inicio() {
   const doMes = (acertos.data ?? []).filter((a) => a.modalidade === 'varejo' && a.status !== 'cancelado' && a.criado_em.slice(0, 10) >= inicioDoMes())
   const varejoMes = { valor: soma(doMes.map((a) => a.valor_total)), pacotes: soma(doMes.flatMap((a) => a.acerto_itens.map((i) => i.quantidade))) }
   const amostrasMes = soma((amostras.data ?? []).filter((a) => a.entregue_em >= inicioDoMes()).flatMap((a) => a.amostra_itens.map((i) => i.quantidade)))
-  const emAberto = (prospectos.data ?? []).filter((p) => p.status === 'novo' || p.status === 'em_conversa').length
+  const emAberto = (prospectos.data ?? []).filter((p) => emAndamento(p.status)).length
 
   if (produtos.isPending || saldosRep.isPending || carregando) return <Carregando />
 
@@ -117,7 +119,7 @@ export function Inicio() {
           <Cartao>
             <Rotulo>Amostras no mês</Rotulo>
             <p className="mt-2 text-3xl font-bold">{amostrasMes}</p>
-            <p className="text-xs text-marrom/65">{emAberto} {emAberto === 1 ? 'potencial cliente' : 'potenciais clientes'} em aberto</p>
+            <p className="text-xs text-marrom/65">{emAberto} {emAberto === 1 ? 'lead' : 'leads'} no funil</p>
           </Cartao>
         </div>
         <BotaoLink para="/financeiro" variante="secundario" cheio>
@@ -139,11 +141,27 @@ export function Inicio() {
     const proximo = minhasComissoes.map((c) => c.vencimento).sort()[0]
     const meusPendentes = (acertos.data ?? []).filter((a) => a.status === 'pendente' && a.representante_id === meuRepresentanteId)
     const lojasDevem = meusPendentes.filter((a) => a.modalidade !== 'varejo')
+    const minhasAtividades = (atividades.data ?? []).filter((a) => !a.concluida_em && a.representante_id === meuRepresentanteId)
+    const atrasadas = minhasAtividades.filter((a) => prazo(a.vence_em) === 'atrasada').length
+    const paraHoje = minhasAtividades.filter((a) => prazo(a.vence_em) === 'hoje').length
     const varejoARepassar = soma(meusPendentes.filter((a) => a.modalidade === 'varejo').map((a) => a.valor_total))
 
     return (
       <section className="space-y-3">
         {ehGestao && <Rotulo>Suas visitas</Rotulo>}
+
+        {atrasadas + paraHoje > 0 && (
+          <Cartao className={atrasadas > 0 ? 'border-alerta/40 bg-alerta/8' : 'border-ouro bg-ouro/10'}>
+            <p className="text-sm font-semibold">
+              {[paraHoje > 0 && `${paraHoje} ${paraHoje === 1 ? 'atividade para hoje' : 'atividades para hoje'}`, atrasadas > 0 && `${atrasadas} ${atrasadas === 1 ? 'atrasada' : 'atrasadas'}`].filter(Boolean).join(' e ')}.
+            </p>
+            <div className="mt-3">
+              <BotaoLink para="/crm" variante="secundario">
+                Ver atividades
+              </BotaoLink>
+            </div>
+          </Cartao>
+        )}
 
         <Cartao>
           <Rotulo>Seu estoque</Rotulo>
@@ -195,8 +213,8 @@ export function Inicio() {
           <BotaoLink para="/varejo" variante="secundario">
             Venda varejo
           </BotaoLink>
-          <BotaoLink para="/potenciais" variante="secundario">
-            Amostras
+          <BotaoLink para="/crm" variante="secundario">
+            CRM e amostras
           </BotaoLink>
         </div>
       </section>

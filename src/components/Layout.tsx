@@ -9,9 +9,10 @@ import { Foto } from './arquivos'
 // deixamos de mostrar o que a pessoa não usa.
 const MENU: { para: string; nome: string; papeis: Papel[] }[] = [
   { para: '/', nome: 'Início', papeis: ['gestao', 'producao', 'representante'] },
-  { para: '/lojas', nome: 'Lojas', papeis: ['gestao', 'representante'] },
+  { para: '/lojas', nome: 'Clientes', papeis: ['gestao', 'representante'] },
+  { para: '/crm', nome: 'CRM', papeis: ['gestao', 'representante'] },
   { para: '/estoque', nome: 'Estoque', papeis: ['gestao', 'producao', 'representante'] },
-  { para: '/financeiro', nome: 'Financeiro', papeis: ['gestao', 'representante'] },
+  { para: '/financeiro', nome: 'Finanças', papeis: ['gestao', 'representante'] },
   { para: '/mais', nome: 'Mais', papeis: ['gestao', 'producao', 'representante'] },
 ]
 
@@ -58,7 +59,7 @@ export function Layout() {
                 to={item.para}
                 end={item.para === '/'}
                 className={({ isActive }) =>
-                  `block border-t-2 py-3.5 text-center text-[13px] font-semibold ${
+                  `block border-t-2 py-3.5 text-center text-[12px] font-semibold ${
                     isActive ? 'border-verde text-verde' : 'border-transparent text-marrom/60'
                   }`
                 }

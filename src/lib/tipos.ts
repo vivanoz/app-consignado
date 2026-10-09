@@ -64,6 +64,8 @@ export interface Loja {
   data_abertura: string
   observacoes: string | null
   foto_path: string | null
+  // De quantos em quantos dias voltar para repor.
+  dias_reposicao: number
 }
 
 export interface Saldo {
@@ -192,7 +194,7 @@ export interface Condicao {
   vigente_desde: string
 }
 
-export type ProspectoStatus = 'novo' | 'em_conversa' | 'virou_loja' | 'descartado'
+export type ProspectoStatus = 'novo' | 'em_conversa' | 'amostra' | 'negociacao' | 'virou_loja' | 'descartado'
 
 export interface Prospecto {
   id: string
@@ -206,6 +208,7 @@ export interface Prospecto {
   representante_id: string
   status: ProspectoStatus
   loja_id: string | null
+  origem: string | null
   observacoes: string | null
   criado_em: string
 }
@@ -276,4 +279,29 @@ export interface Lancamento {
   competencia: string
   pago_em: string | null
   cancelado_em: string | null
+}
+
+export type InteracaoTipo = 'visita' | 'whatsapp' | 'ligacao' | 'email' | 'nota'
+
+export interface Interacao {
+  id: string
+  tipo: InteracaoTipo
+  descricao: string
+  ocorrido_em: string
+  representante_id: string
+  prospecto_id: string | null
+  loja_id: string | null
+}
+
+export interface Atividade {
+  id: string
+  tipo: 'lembrete' | 'reposicao'
+  titulo: string
+  descricao: string | null
+  vence_em: string
+  representante_id: string
+  prospecto_id: string | null
+  loja_id: string | null
+  concluida_em: string | null
+  concluida_por: string | null
 }
