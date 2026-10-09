@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { ResumoVisita } from '../components/ResumoVisita'
 import { EnviarArquivo, Foto } from '../components/arquivos'
 import { Aviso, Botao, BotaoLink, Cartao, Carregando, Etiqueta, Rotulo, SaldoPorProduto, Titulo, Vazio } from '../components/ui'
 import { useAcertos, useAlternarProdutoDaLoja, useEstornarVisita, useLoja, useProdutosFora, useSalvarLoja, useProdutos, useRepresentantes, useSaldosLoja, useVisitas } from '../lib/api'
@@ -15,6 +17,7 @@ export function LojaDetalhe() {
   const acertos = useAcertos()
   const representantes = useRepresentantes()
   const estornar = useEstornarVisita()
+  const [resumoAberto, setResumoAberto] = useState<string | null>(null)
   const salvarLoja = useSalvarLoja()
   const fora = useProdutosFora()
   const alternar = useAlternarProdutoDaLoja()
@@ -167,6 +170,18 @@ export function LojaDetalhe() {
               {v.foto_path && <Foto caminho={v.foto_path} nome="Foto da visita" formato="quadrada" className="mt-3 aspect-[4/3] w-full" />}
               {v.observacoes && <p className="mt-2 text-sm text-marrom/75">{v.observacoes}</p>}
               {v.estorno_motivo && <p className="mt-2 text-sm text-alerta">Estorno: {v.estorno_motivo}</p>}
+              {!v.estornada_em && (ehGestao || l.representante_id === meuRepresentanteId) && (
+                <div className="mt-2">
+                  <Botao variante="discreto" onClick={() => setResumoAberto(resumoAberto === v.id ? null : v.id)}>
+                    {resumoAberto === v.id ? 'Fechar resumo' : 'Resumo para enviar à loja'}
+                  </Botao>
+                  {resumoAberto === v.id && (
+                    <div className="mt-2">
+                      <ResumoVisita visitaId={v.id} />
+                    </div>
+                  )}
+                </div>
+              )}
               {ehGestao && ultimaValida?.id === v.id && acerto?.status !== 'confirmado' && (
                 <div className="mt-2">
                   <Botao variante="discreto" disabled={estornar.isPending} onClick={() => pedirEstorno(v.id)}>

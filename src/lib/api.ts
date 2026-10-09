@@ -571,3 +571,20 @@ export const useLancamentos = () =>
   })
 
 export const useSalvarLancamento = () => useEscrita(salvarEm<Lancamento>('lancamentos'))
+
+// ── Dados da empresa para cobrança (chave Pix do resumo da visita) ──
+
+export interface Empresa {
+  pix_chave: string | null
+  pix_favorecido: string | null
+  pix_banco: string | null
+  whatsapp: string | null
+}
+
+export const useEmpresa = () =>
+  useQuery({
+    queryKey: ['empresa'],
+    queryFn: () => ler<Empresa | null>(supabase.from('empresa').select('*').maybeSingle()),
+  })
+
+export const useSalvarEmpresa = () => useEscrita((e: Partial<Empresa>) => ler(supabase.from('empresa').update(e).eq('id', true)))

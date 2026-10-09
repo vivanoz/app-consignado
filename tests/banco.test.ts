@@ -733,3 +733,15 @@ describe('DRE e fluxo de caixa', () => {
     await expect(b.admin(`delete from public.lancamentos`)).rejects.toThrow(/não podem ser alterados/)
   })
 })
+
+describe('dados de cobrança', () => {
+  it('só a gestão altera a chave Pix; quem faz visita lê; produção não vê', async () => {
+    await b.como(gestao, `update public.empresa set pix_chave = 'pix@exemplo.com', pix_favorecido = 'Viva Noz Teste'`)
+    await b.como(ana, `update public.empresa set pix_chave = 'golpe@exemplo.com'`)
+    await b.como(producao, `update public.empresa set pix_chave = 'golpe@exemplo.com'`)
+    expect(await b.como(ana, `select pix_chave from public.empresa`)).toEqual([{ pix_chave: 'pix@exemplo.com' }])
+    expect(await b.como(producao, `select pix_chave from public.empresa`)).toHaveLength(0)
+    expect(await b.como(inativo, `select pix_chave from public.empresa`)).toHaveLength(0)
+    await expect(b.como(gestao, `insert into public.empresa (id) values (true)`)).rejects.toThrow(/permission denied/)
+  })
+})

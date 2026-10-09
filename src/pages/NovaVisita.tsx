@@ -4,7 +4,8 @@ import { AreaDeTexto, Aviso, Botao, BotaoLink, Cartao, Carregando, Contador, Rot
 import { useAnexar, useLoja, usePrecos, useProdutos, useProdutosFora, useRegistrarVisita, useRepresentantes, useSaldosLoja, useSaldosRepresentante } from '../lib/api'
 import { useAcesso } from '../lib/auth'
 import { useEstoqueDeQuemVende } from '../lib/estoque'
-import { hoje, linkWhatsApp, pacotes, precoVigente, reais, data } from '../lib/formato'
+import { pacotes, precoVigente, reais } from '../lib/formato'
+import { ResumoVisita } from '../components/ResumoVisita'
 import { enviarArquivo } from '../lib/arquivos'
 import type { ItemVisitaEnvio, ResultadoVisita } from '../lib/tipos'
 
@@ -133,15 +134,6 @@ export function NovaVisita() {
   }
 
   if (resultado) {
-    const mensagem = [
-      `Viva Noz · acerto de ${data(hoje())}`,
-      l.nome,
-      '',
-      ...resultado.resumo,
-      '',
-      `Total: ${reais(Number(resultado.valor_total))}`,
-      'Pagamento por Pix na chave da Viva Noz.',
-    ].join('\n')
     return (
       <div className="space-y-4">
         <Titulo apoio={l.nome}>Visita registrada.</Titulo>
@@ -159,11 +151,7 @@ export function NovaVisita() {
             <p className="text-sm">Não houve venda nesta visita, então não há acerto.</p>
           </Cartao>
         )}
-        {resultado.acerto_id && (
-          <BotaoLink para={linkWhatsApp(l.contato_telefone, mensagem)} cheio>
-            Enviar resumo pelo WhatsApp
-          </BotaoLink>
-        )}
+        <ResumoVisita visitaId={resultado.visita_id} />
         <BotaoLink para={`/lojas/${l.id}`} variante="secundario" cheio>
           Voltar para a loja
         </BotaoLink>

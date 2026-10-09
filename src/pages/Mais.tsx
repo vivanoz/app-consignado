@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { EnviarArquivo, Foto } from '../components/arquivos'
 import { Aviso, Botao, BotaoLink, Campo, Cartao, Carregando, Rotulo, Selecao, Titulo, Vazio } from '../components/ui'
-import { useAnexar, usePrecos, useProdutos, useRepresentantes, useSalvarPreco } from '../lib/api'
+import { useAnexar, useEmpresa, usePrecos, useProdutos, useRepresentantes, useSalvarEmpresa, useSalvarPreco } from '../lib/api'
 import { useAcesso } from '../lib/auth'
 import { NOME_MODALIDADE, NOME_PAPEL, data, hoje, precoVigente, reais } from '../lib/formato'
 import { supabase } from '../lib/supabase'
@@ -38,6 +38,8 @@ export function Mais() {
           </BotaoLink>
         </Cartao>
       )}
+
+      {ehGestao && <DadosDeCobranca />}
 
       {papel !== 'representante' && (
         <Cartao className="space-y-3">
@@ -94,6 +96,49 @@ export function Mais() {
         Sair
       </Botao>
     </div>
+  )
+}
+
+// Chave Pix que vai no resumo da visita enviado às lojas.
+function DadosDeCobranca() {
+  const empresa = useEmpresa()
+  const salvar = useSalvarEmpresa()
+  const [form, setForm] = useState<{ pix_chave: string; pix_favorecido: string; pix_banco: string } | null>(null)
+  const [salvo, setSalvo] = useState(false)
+
+  if (empresa.isPending) return null
+  const atual = form ?? { pix_chave: empresa.data?.pix_chave ?? '', pix_favorecido: empresa.data?.pix_favorecido ?? '', pix_banco: empresa.data?.pix_banco ?? '' }
+  const mudar = (campo: keyof typeof atual) => (e: { target: { value: string } }) => {
+    setSalvo(false)
+    setForm({ ...atual, [campo]: e.target.value })
+  }
+
+  async function enviar(e: FormEvent) {
+    e.preventDefault()
+    await salvar.mutateAsync({
+      pix_chave: atual.pix_chave.trim() || null,
+      pix_favorecido: atual.pix_favorecido.trim() || null,
+      pix_banco: atual.pix_banco.trim() || null,
+    })
+    setSalvo(true)
+  }
+
+  return (
+    <Cartao>
+      <Rotulo>Pix para cobrança das lojas</Rotulo>
+      <p className="mt-1 text-xs text-marrom/65">Aparece no resumo da visita que o app monta para enviar à loja.</p>
+      {!empresa.data?.pix_chave && <p className="mt-2 text-sm font-semibold text-alerta">Sem chave cadastrada. O resumo sai sem a chave Pix.</p>}
+      <form onSubmit={enviar} className="mt-3 space-y-3">
+        <Campo rotulo="Chave Pix" value={atual.pix_chave} onChange={mudar('pix_chave')} />
+        <Campo rotulo="Nome de quem recebe" value={atual.pix_favorecido} onChange={mudar('pix_favorecido')} />
+        <Campo rotulo="Banco" placeholder="Opcional." value={atual.pix_banco} onChange={mudar('pix_banco')} />
+        <Aviso erro={salvar.error} />
+        {salvo && <p className="text-sm text-verde">Salvo.</p>}
+        <Botao type="submit" variante="secundario" cheio disabled={salvar.isPending}>
+          Salvar dados de cobrança
+        </Botao>
+      </form>
+    </Cartao>
   )
 }
 
