@@ -211,6 +211,13 @@ export interface Prospecto {
   origem: string | null
   observacoes: string | null
   criado_em: string
+  // Quanto a loja deve comprar por mês, em reais, se fechar.
+  valor_estimado: number | null
+  previsao_fechamento: string | null
+  temperatura: 'quente' | 'morno' | 'frio' | null
+  motivo_perda: string | null
+  etapa_desde: string
+  encerrado_em: string | null
 }
 
 export interface Amostra {
@@ -282,6 +289,7 @@ export interface Lancamento {
 }
 
 export type InteracaoTipo = 'visita' | 'whatsapp' | 'ligacao' | 'email' | 'nota'
+export type AcaoAtividade = 'tarefa' | 'visita' | 'whatsapp' | 'ligacao' | 'email'
 
 export interface Interacao {
   id: string
@@ -296,6 +304,7 @@ export interface Interacao {
 export interface Atividade {
   id: string
   tipo: 'lembrete' | 'reposicao'
+  acao: AcaoAtividade
   titulo: string
   descricao: string | null
   vence_em: string

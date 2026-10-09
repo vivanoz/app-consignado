@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { useAtividades, useLojas, useProspectos, useRepresentantes, useSalvarAtividade } from '../lib/api'
+import { useAtividades, useLojas, useProspectos, useRegistrarInteracao, useRepresentantes, useSalvarAtividade } from '../lib/api'
 import { useAcesso } from '../lib/auth'
-import { daquiA, prazo, quando } from '../lib/crm'
+import { NOME_ACAO, daquiA, prazo, quando } from '../lib/crm'
 import { data, hoje } from '../lib/formato'
-import type { Atividade } from '../lib/tipos'
+import type { AcaoAtividade, Atividade } from '../lib/tipos'
 import { Aviso, Botao, Campo, Cartao, Carregando, Etiqueta, Rotulo, Selecao, Vazio } from './ui'
 
 const GRUPOS = [
@@ -96,8 +96,39 @@ export function Atividades({ de, compacto = false }: { de?: { lojaId?: string; p
 function CartaoAtividade({ atividade: a, alvo, responsavel }: { atividade: Atividade; alvo: { nome: string; para: string; tipo: string } | null; responsavel?: string }) {
   const { perfil } = useAcesso()
   const salvar = useSalvarAtividade()
+  const registrar = useRegistrarInteracao()
   const [adiando, setAdiando] = useState(false)
+  // Concluir uma atividade de lead ou cliente pede o que aconteceu e o próximo
+  // passo: é isso que mantém todo lead com uma data de retorno.
+  const [fechando, setFechando] = useState(false)
+  const [resultado, setResultado] = useState('')
+  const [proximoEm, setProximoEm] = useState<number | null>(null)
+  const [proximoTitulo, setProximoTitulo] = useState('Retomar contato')
+  const [erro, setErro] = useState<unknown>(null)
   const atrasada = prazo(a.vence_em) === 'atrasada'
+  const comContexto = Boolean(a.prospecto_id || a.loja_id) && a.tipo !== 'reposicao'
+  const agora = () => ({ id: a.id, concluida_em: new Date().toISOString(), concluida_por: perfil?.id ?? null })
+
+  async function concluir() {
+    setErro(null)
+    try {
+      if (resultado.trim()) {
+        await registrar.mutateAsync({
+          tipo: a.acao === 'tarefa' ? 'nota' : a.acao,
+          descricao: `${a.titulo}: ${resultado.trim()}`,
+          representante_id: a.representante_id,
+          loja_id: a.loja_id,
+          prospecto_id: a.prospecto_id,
+        })
+      }
+      if (proximoEm !== null && proximoTitulo.trim()) {
+        await salvar.mutateAsync({ titulo: proximoTitulo.trim(), vence_em: daquiA(proximoEm), representante_id: a.representante_id, loja_id: a.loja_id, prospecto_id: a.prospecto_id })
+      }
+      await salvar.mutateAsync(agora())
+    } catch (e) {
+      setErro(e)
+    }
+  }
 
   return (
     <Cartao className={`py-3 ${atrasada ? 'border-alerta/40' : ''}`}>
@@ -106,7 +137,7 @@ function CartaoAtividade({ atividade: a, alvo, responsavel }: { atividade: Ativi
           type="button"
           aria-label={`Concluir: ${a.titulo}`}
           disabled={salvar.isPending}
-          onClick={() => salvar.mutate({ id: a.id, concluida_em: new Date().toISOString(), concluida_por: perfil?.id ?? null })}
+          onClick={() => (comContexto ? setFechando(!fechando) : salvar.mutate(agora()))}
           className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full border-2 border-verde text-verde active:bg-verde active:text-creme"
         >
           ✓
@@ -120,6 +151,7 @@ function CartaoAtividade({ atividade: a, alvo, responsavel }: { atividade: Ativi
           )}
           {a.descricao && <p className="mt-0.5 text-sm whitespace-pre-line text-marrom/75">{a.descricao}</p>}
           <p className={`mt-1 text-xs ${atrasada ? 'font-semibold text-alerta' : 'text-marrom/65'}`}>
+            {a.acao !== 'tarefa' ? `${NOME_ACAO[a.acao]} · ` : ''}
             {data(a.vence_em)} · {quando(a.vence_em)}
             {responsavel ? ` · ${responsavel}` : ''}
           </p>
@@ -130,28 +162,53 @@ function CartaoAtividade({ atividade: a, alvo, responsavel }: { atividade: Ativi
         </div>
       </div>
 
-      {adiando ? (
-        <div className="mt-2 flex flex-wrap gap-2 border-t border-linha pt-2">
-          {[1, 3, 7, 15].map((dias) => (
-            <button
-              key={dias}
-              type="button"
-              disabled={salvar.isPending}
-              onClick={() => salvar.mutateAsync({ id: a.id, vence_em: daquiA(dias) }).then(() => setAdiando(false))}
-              className="min-h-10 rounded-full border border-marrom/30 px-4 text-sm font-semibold"
-            >
-              {dias === 1 ? 'Amanhã' : `Em ${dias} dias`}
-            </button>
-          ))}
-          <button type="button" onClick={() => setAdiando(false)} className="min-h-10 px-2 text-sm text-marrom/60">
-            Cancelar
-          </button>
+      {fechando && (
+        <div className="mt-3 space-y-3 border-t border-linha pt-3">
+          <label className="block text-sm font-semibold">
+            O que aconteceu
+            <textarea value={resultado} onChange={(e) => setResultado(e.target.value)} rows={2} placeholder="Opcional. Fica no histórico." className="mt-1 block w-full rounded-xl border border-marrom/25 bg-white/70 px-3 py-2 text-base" />
+          </label>
+          <div>
+            <p className="text-sm font-semibold">Próximo passo</p>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {([null, 1, 3, 7, 15] as const).map((dias) => (
+                <button key={String(dias)} type="button" onClick={() => setProximoEm(dias)} className={`min-h-10 rounded-full border px-4 text-sm font-semibold ${proximoEm === dias ? 'border-verde bg-verde text-creme' : 'border-marrom/30'}`}>
+                  {dias === null ? 'Nenhum' : dias === 1 ? 'Amanhã' : `Em ${dias} dias`}
+                </button>
+              ))}
+            </div>
+          </div>
+          {proximoEm !== null && <Campo rotulo="O que fazer" value={proximoTitulo} onChange={(e) => setProximoTitulo(e.target.value)} />}
+          <Aviso erro={erro} />
+          <Botao cheio disabled={salvar.isPending || registrar.isPending} onClick={concluir}>
+            Concluir
+          </Botao>
         </div>
-      ) : (
-        <button type="button" onClick={() => setAdiando(true)} className="mt-1 ml-11 min-h-9 text-sm font-semibold text-verde underline underline-offset-4">
-          Adiar
-        </button>
       )}
+
+      {!fechando &&
+        (adiando ? (
+          <div className="mt-2 flex flex-wrap gap-2 border-t border-linha pt-2">
+            {[1, 3, 7, 15].map((dias) => (
+              <button
+                key={dias}
+                type="button"
+                disabled={salvar.isPending}
+                onClick={() => salvar.mutateAsync({ id: a.id, vence_em: daquiA(dias) }).then(() => setAdiando(false))}
+                className="min-h-10 rounded-full border border-marrom/30 px-4 text-sm font-semibold"
+              >
+                {dias === 1 ? 'Amanhã' : `Em ${dias} dias`}
+              </button>
+            ))}
+            <button type="button" onClick={() => setAdiando(false)} className="min-h-10 px-2 text-sm text-marrom/60">
+              Cancelar
+            </button>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setAdiando(true)} className="mt-1 ml-11 min-h-9 text-sm font-semibold text-verde underline underline-offset-4">
+            Adiar
+          </button>
+        ))}
       <Aviso erro={salvar.error} />
     </Cartao>
   )
@@ -165,12 +222,13 @@ function NovaAtividade({ de, aoFechar }: { de?: { lojaId?: string; prospectoId?:
   const salvar = useSalvarAtividade()
   // O responsável padrão é quem cuida do cliente ou do lead; fora disso, quem está criando.
   const dono = lojas.data?.find((l) => l.id === de?.lojaId)?.representante_id ?? prospectos.data?.find((p) => p.id === de?.prospectoId)?.representante_id ?? meuRepresentanteId ?? ''
-  const [form, setForm] = useState({ titulo: '', descricao: '', vence_em: daquiA(1), representante_id: dono })
+  const [form, setForm] = useState({ titulo: '', descricao: '', vence_em: daquiA(1), representante_id: dono, acao: 'tarefa' as AcaoAtividade })
 
   async function enviar(e: FormEvent) {
     e.preventDefault()
     await salvar.mutateAsync({
       titulo: form.titulo.trim(),
+      acao: form.acao,
       descricao: form.descricao.trim() || null,
       vence_em: form.vence_em,
       representante_id: ehGestao ? form.representante_id : (meuRepresentanteId ?? form.representante_id),
@@ -184,6 +242,13 @@ function NovaAtividade({ de, aoFechar }: { de?: { lojaId?: string; prospectoId?:
     <Cartao>
       <Rotulo>Novo lembrete</Rotulo>
       <form onSubmit={enviar} className="mt-3 space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {(Object.keys(NOME_ACAO) as AcaoAtividade[]).map((acao) => (
+            <button key={acao} type="button" onClick={() => setForm({ ...form, acao })} className={`min-h-10 rounded-full border px-4 text-sm font-semibold ${form.acao === acao ? 'border-verde bg-verde text-creme' : 'border-marrom/30'}`}>
+              {NOME_ACAO[acao]}
+            </button>
+          ))}
+        </div>
         <Campo rotulo="O que precisa ser feito" required placeholder="Levar expositor novo." value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} />
         <Campo rotulo="Detalhe" placeholder="Opcional." value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} />
         <Campo rotulo="Para quando" type="date" required min={hoje()} value={form.vence_em} onChange={(e) => setForm({ ...form, vence_em: e.target.value })} />

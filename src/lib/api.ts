@@ -631,3 +631,11 @@ export const useImportarProspectos = () =>
   useEscrita(async (leads: Partial<Prospecto>[]) => {
     for (let i = 0; i < leads.length; i += 200) await ler(supabase.from('prospectos').insert(leads.slice(i, i + 200)))
   })
+
+// Último contato registrado com cada lead.
+export const useContatos = (ativo = true) =>
+  useQuery({
+    queryKey: ['interacoes', 'ultimo-contato'],
+    enabled: ativo,
+    queryFn: () => ler<{ prospecto_id: string; ultimo_contato: string; contatos: number }[]>(supabase.from('prospectos_contato').select('*')),
+  })

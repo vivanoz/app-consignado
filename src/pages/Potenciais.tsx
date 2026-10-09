@@ -7,8 +7,8 @@ import { AreaDeTexto, Aviso, Botao, BotaoLink, Campo, Cartao, Carregando, Contad
 import { useAmostras, useProdutos, useProspectos, useRegistrarAmostra, useRepresentantes, useSalvarProspecto } from '../lib/api'
 import { useAcesso } from '../lib/auth'
 import { useEstoqueDeQuemVende } from '../lib/estoque'
-import { ETAPAS, NOME_ETAPA, TOM_ETAPA, emAndamento } from '../lib/crm'
-import { data, hoje, pacotes } from '../lib/formato'
+import { ETAPAS, MOTIVOS_DE_PERDA, NOME_ETAPA, NOME_TEMPERATURA, TOM_ETAPA, emAndamento } from '../lib/crm'
+import { data, diasDesde, hoje, pacotes, reais } from '../lib/formato'
 import type { Prospecto } from '../lib/tipos'
 
 export function PotencialDetalhe() {
@@ -20,6 +20,9 @@ export function PotencialDetalhe() {
   const produtos = useProdutos()
   const salvar = useSalvarProspecto()
   const [entregando, setEntregando] = useState(false)
+  const [perdendo, setPerdendo] = useState(false)
+  const [motivo, setMotivo] = useState(MOTIVOS_DE_PERDA[0])
+  const [outroMotivo, setOutroMotivo] = useState('')
 
   if (prospectos.isPending || produtos.isPending) return <Carregando />
   const p = prospectos.data?.find((x) => x.id === id)
@@ -38,10 +41,34 @@ export function PotencialDetalhe() {
 
       <div className="flex flex-wrap gap-2">
         <Etiqueta tom={TOM_ETAPA[p.status]}>{NOME_ETAPA[p.status]}</Etiqueta>
+        {p.temperatura && <Etiqueta tom={p.temperatura === 'quente' ? 'alerta' : p.temperatura === 'morno' ? 'ouro' : 'neutro'}>{NOME_TEMPERATURA[p.temperatura]}</Etiqueta>}
         {p.origem && <Etiqueta>{p.origem}</Etiqueta>}
         {p.segmento && <Etiqueta>{p.segmento}</Etiqueta>}
         <Etiqueta>Desde {data(p.criado_em)}</Etiqueta>
       </div>
+
+      {(Number(p.valor_estimado) > 0 || p.previsao_fechamento || aberto) && (
+        <div className="grid grid-cols-2 gap-3">
+          <Cartao>
+            <Rotulo>Valor estimado</Rotulo>
+            <p className="mt-1 text-xl font-bold">{Number(p.valor_estimado) > 0 ? reais(Number(p.valor_estimado)) : 'Não informado'}</p>
+            <p className="text-xs text-marrom/65">por mês, se fechar</p>
+          </Cartao>
+          <Cartao>
+            <Rotulo>Nesta etapa</Rotulo>
+            <p className="mt-1 text-xl font-bold">{diasDesde(p.etapa_desde) === 0 ? 'desde hoje' : `há ${diasDesde(p.etapa_desde)} dias`}</p>
+            <p className="text-xs text-marrom/65">{p.previsao_fechamento ? `previsão de fechar em ${data(p.previsao_fechamento)}` : 'sem previsão de fechamento'}</p>
+          </Cartao>
+        </div>
+      )}
+
+      {p.status === 'descartado' && (
+        <Cartao className="border-alerta/40 bg-alerta/8">
+          <Rotulo>Motivo da perda</Rotulo>
+          <p className="mt-1 text-sm font-semibold">{p.motivo_perda}</p>
+          {p.encerrado_em && <p className="text-xs text-marrom/65">Perdido em {data(p.encerrado_em)}</p>}
+        </Cartao>
+      )}
 
       {(p.contato_nome || p.contato_telefone || p.observacoes) && (
         <Cartao>
@@ -113,9 +140,34 @@ export function PotencialDetalhe() {
               <BotaoLink para={`/lojas/nova?potencial=${p.id}`} variante="secundario" cheio>
                 Fechou. Cadastrar como loja
               </BotaoLink>
-              <Botao variante="secundario" cheio disabled={salvar.isPending} onClick={() => salvar.mutateAsync({ id: p.id, status: 'descartado' }).then(() => navegar('/crm'))}>
-                Não vai fechar. Marcar como perdido
-              </Botao>
+              {perdendo ? (
+                <Cartao className="space-y-3">
+                  <Rotulo>Por que não fechou</Rotulo>
+                  <Selecao rotulo="Motivo" value={motivo} onChange={(e) => setMotivo(e.target.value)}>
+                    {MOTIVOS_DE_PERDA.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                    <option value="outro">Outro motivo</option>
+                  </Selecao>
+                  {motivo === 'outro' && <Campo rotulo="Qual motivo" value={outroMotivo} onChange={(e) => setOutroMotivo(e.target.value)} />}
+                  <Botao
+                    cheio
+                    disabled={salvar.isPending || (motivo === 'outro' && !outroMotivo.trim())}
+                    onClick={() => salvar.mutateAsync({ id: p.id, status: 'descartado', motivo_perda: motivo === 'outro' ? outroMotivo.trim() : motivo }).then(() => navegar('/crm'))}
+                  >
+                    Marcar como perdido
+                  </Botao>
+                  <Botao variante="discreto" cheio onClick={() => setPerdendo(false)}>
+                    Cancelar
+                  </Botao>
+                </Cartao>
+              ) : (
+                <Botao variante="secundario" cheio onClick={() => setPerdendo(true)}>
+                  Não vai fechar. Marcar como perdido
+                </Botao>
+              )}
             </>
           )}
           {p.status === 'descartado' && (
@@ -212,7 +264,7 @@ function EntregarAmostra({ prospecto, aoFechar }: { prospecto: Prospecto; aoFech
   )
 }
 
-const VAZIO = { nome: '', segmento: 'Arena de jogos de praia', endereco: '', bairro: '', cidade: 'Maringá', contato_nome: '', contato_telefone: '', origem: '', observacoes: '', representante_id: '' }
+const VAZIO = { nome: '', segmento: 'Arena de jogos de praia', endereco: '', bairro: '', cidade: 'Maringá', contato_nome: '', contato_telefone: '', origem: '', observacoes: '', representante_id: '', valor_estimado: '', previsao_fechamento: '', temperatura: '' }
 
 export function PotencialForm() {
   const { id } = useParams()
@@ -235,6 +287,9 @@ export function PotencialForm() {
         contato_nome: existente.contato_nome ?? '',
         contato_telefone: existente.contato_telefone ?? '',
         origem: existente.origem ?? '',
+        valor_estimado: existente.valor_estimado ? String(existente.valor_estimado).replace('.', ',') : '',
+        previsao_fechamento: existente.previsao_fechamento ?? '',
+        temperatura: existente.temperatura ?? '',
         observacoes: existente.observacoes ?? '',
         representante_id: existente.representante_id,
       })
@@ -261,6 +316,9 @@ export function PotencialForm() {
       contato_telefone: texto(form.contato_telefone),
       origem: texto(form.origem),
       observacoes: texto(form.observacoes),
+      valor_estimado: Number(form.valor_estimado.replace(',', '.')) || null,
+      previsao_fechamento: form.previsao_fechamento || null,
+      temperatura: (form.temperatura || null) as Prospecto['temperatura'],
     }
     // Só a gestão escolhe (ou troca) quem cuida do potencial cliente.
     if (ehGestao) dados.representante_id = form.representante_id
@@ -293,6 +351,16 @@ export function PotencialForm() {
         </Selecao>
       )}
 
+      <div className="grid grid-cols-2 gap-3">
+        <Campo rotulo="Valor estimado por mês (R$)" inputMode="decimal" pattern="\d*([.,]\d{1,2})?" placeholder="300" {...campo('valor_estimado')} />
+        <Campo rotulo="Previsão de fechar" type="date" {...campo('previsao_fechamento')} />
+      </div>
+      <Selecao rotulo="Temperatura" {...campo('temperatura')}>
+        <option value="">Não definida</option>
+        <option value="quente">Quente: quer fechar logo</option>
+        <option value="morno">Morno: interessado, sem pressa</option>
+        <option value="frio">Frio: pouco interesse por enquanto</option>
+      </Selecao>
       <Campo rotulo="De onde veio este lead" placeholder="Indicação, lista, Instagram, passou na frente." {...campo('origem')} />
       <AreaDeTexto rotulo="Observações" valor={form.observacoes} aoMudar={(v) => setForm((f) => ({ ...f, observacoes: v }))} dica="O que vale saber sobre o lugar." />
       <Aviso erro={salvar.error} />

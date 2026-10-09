@@ -799,4 +799,23 @@ describe('CRM: atividades e interações', () => {
     }
     expect(await b.admin(`select status, origem from public.prospectos where id = $1`, [id])).toEqual([{ status: 'virou_loja', origem: 'Planilha de clubes' }])
   })
+
+  it('perder um lead exige motivo; reabrir limpa o encerramento e zera o relógio da etapa', async () => {
+    const [{ id }] = await b.como(ana, `insert into public.prospectos (nome, representante_id, valor_estimado, temperatura) values ('Lead Frio', $1, 400, 'frio') returning id`, [repAna])
+    await expect(b.como(ana, `update public.prospectos set status = 'descartado' where id = $1`, [id])).rejects.toThrow(/motivo da perda/)
+    await b.admin(`update public.prospectos set etapa_desde = now() - interval '20 days' where id = $1`, [id])
+    await b.como(ana, `update public.prospectos set status = 'descartado', motivo_perda = 'Sem espaço no balcão' where id = $1`, [id])
+    let [p] = await b.admin(`select encerrado_em is not null as encerrado, motivo_perda, etapa_desde > now() - interval '1 minute' as relogio_zerado from public.prospectos where id = $1`, [id])
+    expect(p).toEqual({ encerrado: true, motivo_perda: 'Sem espaço no balcão', relogio_zerado: true })
+
+    await b.como(ana, `update public.prospectos set status = 'em_conversa' where id = $1`, [id])
+    ;[p] = await b.admin(`select encerrado_em, motivo_perda from public.prospectos where id = $1`, [id])
+    expect(p).toEqual({ encerrado_em: null, motivo_perda: null })
+    await expect(b.como(ana, `update public.prospectos set temperatura = 'fervendo' where id = $1`, [id])).rejects.toThrow(/check constraint/)
+  })
+
+  it('último contato de cada lead fica visível só para quem cuida dele', async () => {
+    expect((await b.como(ana, `select contatos from public.prospectos_contato`)).length).toBeGreaterThan(0)
+    expect(await b.como(producao, `select * from public.prospectos_contato`)).toHaveLength(0)
+  })
 })

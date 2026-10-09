@@ -1,16 +1,19 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { Atividades } from '../components/Atividades'
-import { Aviso, Botao, BotaoLink, Cartao, Carregando, Rotulo, Selecao, Titulo, Vazio } from '../components/ui'
-import { useAmostras, useAtividades, useImportarProspectos, useProspectos, useRepresentantes } from '../lib/api'
+import { Aviso, Botao, BotaoLink, Cartao, Rotulo, Selecao, Titulo, Vazio } from '../components/ui'
+import { useImportarProspectos, useProspectos, useRepresentantes } from '../lib/api'
 import { useAcesso } from '../lib/auth'
-import { ETAPAS, emAndamento, quando } from '../lib/crm'
-import type { Prospecto } from '../lib/tipos'
+import { Funil, Indicadores } from './Funil'
 
 // CRM: os potenciais clientes no funil e o que precisa ser feito, um a um.
 export function Crm() {
-  const [aba, setAba] = useState<'atividades' | 'funil'>(() => (sessionStorage.getItem('vivanoz:crm') === 'funil' ? 'funil' : 'atividades'))
-  const trocar = (a: 'atividades' | 'funil') => {
+  type Aba = 'atividades' | 'funil' | 'indicadores'
+  const [aba, setAba] = useState<Aba>(() => {
+    const salva = sessionStorage.getItem('vivanoz:crm')
+    return salva === 'funil' || salva === 'indicadores' ? salva : 'atividades'
+  })
+  const trocar = (a: Aba) => {
     sessionStorage.setItem('vivanoz:crm', a)
     setAba(a)
   }
@@ -22,7 +25,8 @@ export function Crm() {
         {(
           [
             ['atividades', 'Atividades'],
-            ['funil', 'Funil de vendas'],
+            ['funil', 'Funil'],
+            ['indicadores', 'Indicadores'],
           ] as const
         ).map(([id, nome]) => (
           <button key={id} type="button" onClick={() => trocar(id)} className={`min-h-10 flex-1 rounded-lg text-sm font-semibold ${aba === id ? 'bg-verde text-creme' : 'text-marrom/70'}`}>
@@ -30,117 +34,8 @@ export function Crm() {
           </button>
         ))}
       </div>
-      {aba === 'atividades' ? <Atividades /> : <Funil />}
+      {aba === 'atividades' ? <Atividades /> : aba === 'funil' ? <Funil /> : <Indicadores />}
     </div>
-  )
-}
-
-function Funil() {
-  const { ehGestao, meuRepresentanteId } = useAcesso()
-  const prospectos = useProspectos()
-  const amostras = useAmostras()
-  const atividades = useAtividades()
-  const representantes = useRepresentantes()
-  const [dono, setDono] = useState('')
-  const [verPerdidos, setVerPerdidos] = useState(false)
-
-  if (prospectos.isPending) return <Carregando />
-  if (prospectos.error) return <Aviso erro={prospectos.error} />
-
-  const leads = prospectos.data.filter((p) => !dono || p.representante_id === dono)
-  const emAberto = leads.filter((p) => emAndamento(p.status))
-  const perdidos = leads.filter((p) => p.status === 'descartado')
-  const amostrasDe = (id: string) =>
-    (amostras.data ?? []).filter((a) => a.prospecto_id === id).reduce((s, a) => s + a.amostra_itens.reduce((t, i) => t + i.quantidade, 0), 0)
-  const proximoPasso = (id: string) =>
-    (atividades.data ?? [])
-      .filter((a) => a.prospecto_id === id && !a.concluida_em)
-      .map((a) => a.vence_em)
-      .sort()[0]
-
-  return (
-    <div className="space-y-4">
-      {(ehGestao || meuRepresentanteId) && (
-        <div className="grid grid-cols-2 gap-3">
-          <BotaoLink para="/crm/novo">Novo lead</BotaoLink>
-          <BotaoLink para="/crm/importar" variante="secundario">
-            Importar Excel
-          </BotaoLink>
-        </div>
-      )}
-
-      {ehGestao && (representantes.data?.length ?? 0) > 1 && (
-        <Selecao rotulo="De quem" value={dono} onChange={(e) => setDono(e.target.value)}>
-          <option value="">Toda a equipe</option>
-          {representantes.data?.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.nome}
-            </option>
-          ))}
-        </Selecao>
-      )}
-
-      <p className="text-sm text-marrom/75">
-        {emAberto.length} {emAberto.length === 1 ? 'lead em andamento' : 'leads em andamento'}. Deslize para o lado para ver as etapas.
-      </p>
-
-      {/* Uma coluna por etapa. No celular, rola para o lado e para em cada coluna. */}
-      <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2">
-        {ETAPAS.map((etapa) => {
-          const daEtapa = leads.filter((p) => p.status === etapa.id)
-          const visiveis = etapa.id === 'virou_loja' ? daEtapa.slice(0, 8) : daEtapa
-          return (
-            <section key={etapa.id} className="w-[78vw] max-w-[300px] shrink-0 snap-start rounded-2xl border border-linha bg-papel/60 p-3">
-              <div className="flex items-baseline justify-between gap-2">
-                <Rotulo>{etapa.nome}</Rotulo>
-                <span className="text-sm font-bold">{daEtapa.length}</span>
-              </div>
-              <p className="mb-2 text-[11px] leading-tight text-marrom/60">{etapa.explica}</p>
-              <ul className="space-y-2">
-                {visiveis.map((p) => (
-                  <li key={p.id}>
-                    <CartaoLead lead={p} amostras={amostrasDe(p.id)} proximo={proximoPasso(p.id)} dono={ehGestao ? representantes.data?.find((r) => r.id === p.representante_id)?.nome : undefined} />
-                  </li>
-                ))}
-              </ul>
-              {daEtapa.length === 0 && <p className="py-4 text-center text-xs text-marrom/50">Ninguém nesta etapa.</p>}
-              {visiveis.length < daEtapa.length && <p className="pt-2 text-center text-xs text-marrom/60">e mais {daEtapa.length - visiveis.length}, em Clientes.</p>}
-            </section>
-          )
-        })}
-      </div>
-
-      {perdidos.length > 0 && (
-        <div>
-          <Botao variante="discreto" onClick={() => setVerPerdidos(!verPerdidos)}>
-            {verPerdidos ? 'Esconder perdidos' : `Ver ${perdidos.length} ${perdidos.length === 1 ? 'perdido' : 'perdidos'}`}
-          </Botao>
-          {verPerdidos && (
-            <ul className="mt-2 space-y-2">
-              {perdidos.map((p) => (
-                <li key={p.id}>
-                  <CartaoLead lead={p} amostras={amostrasDe(p.id)} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function CartaoLead({ lead, amostras, proximo, dono }: { lead: Prospecto; amostras: number; proximo?: string; dono?: string }) {
-  const aberto = emAndamento(lead.status)
-  return (
-    <Link to={`/crm/${lead.id}`} className="block rounded-xl border border-linha bg-papel p-3 active:bg-areia/25">
-      <p className="leading-snug font-bold">{lead.nome}</p>
-      <p className="text-xs text-marrom/65">{[lead.bairro, lead.segmento, dono].filter(Boolean).join(' · ')}</p>
-      {amostras > 0 && <p className="mt-1 text-xs font-semibold">{amostras === 1 ? '1 amostra entregue' : `${amostras} amostras entregues`}</p>}
-      {aberto && (
-        <p className={`mt-1 text-xs font-semibold ${proximo ? 'text-verde' : 'text-alerta'}`}>{proximo ? `Próximo passo ${quando(proximo)}` : 'Sem próximo passo marcado'}</p>
-      )}
-    </Link>
   )
 }
 
@@ -155,6 +50,7 @@ const COLUNAS = [
   { campo: 'contato_nome', titulo: 'Nome do contato', exemplo: 'João' },
   { campo: 'contato_telefone', titulo: 'WhatsApp', exemplo: '(44) 90000-0000' },
   { campo: 'origem', titulo: 'Origem', exemplo: 'Lista de arenas de Maringá' },
+  { campo: 'valor_estimado', titulo: 'Valor estimado por mês', exemplo: '300' },
   { campo: 'observacoes', titulo: 'Observações', exemplo: 'Indicado por um cliente' },
 ] as const
 
@@ -244,6 +140,7 @@ export function ImportarLeads() {
         contato_nome: texto(l.contato_nome),
         contato_telefone: texto(l.contato_telefone),
         origem: l.origem || `Planilha ${arquivo}`,
+        valor_estimado: Number(l.valor_estimado.replace(/[^\d,.]/g, '').replace(',', '.')) || null,
         observacoes: texto(l.observacoes),
         representante_id: ehGestao ? dono : meuRepresentanteId!,
       })),

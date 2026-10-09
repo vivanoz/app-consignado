@@ -67,3 +67,26 @@ export function daquiA(dias: number) {
   d.setDate(d.getDate() + dias)
   return d.toISOString().slice(0, 10)
 }
+
+// Lead sem contato nem mudança de etapa há este número de dias aparece como parado.
+export const DIAS_PARADO = 14
+
+export const NOME_TEMPERATURA: Record<string, string> = { quente: 'Quente', morno: 'Morno', frio: 'Frio' }
+
+export const MOTIVOS_DE_PERDA = [
+  'Sem interesse no produto',
+  'Achou o preço alto',
+  'Sem espaço para expor',
+  'Já trabalha com outra marca',
+  'Não conseguimos falar com o responsável',
+  'Público do lugar não combina',
+  'Lugar fechou ou mudou',
+]
+
+export const NOME_ACAO: Record<string, string> = {
+  tarefa: 'Tarefa',
+  visita: 'Visitar',
+  whatsapp: 'Mandar WhatsApp',
+  ligacao: 'Ligar',
+  email: 'Mandar e-mail',
+}
